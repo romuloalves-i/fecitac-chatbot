@@ -1,5 +1,5 @@
-# Dockerfile para ARM64
-FROM arm64v8/node:18-alpine
+# syntax=docker/dockerfile:1
+FROM node:18-alpine
 
 # Instalar dependências do sistema para ARM64
 RUN apk add --no-cache \

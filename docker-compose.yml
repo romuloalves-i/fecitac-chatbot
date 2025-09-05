@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  fecitac-chatbot:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: fecitac-bot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./logs:/app/logs
+      - bot_sessions:/app/.wwebjs_auth
+    networks:
+      - bot-network
+    # Se precisar expor porta
+    # ports:
+    #   - "3000:3000"
+
+volumes:
+  bot_sessions:
+
+networks:
+  bot-network:
+    driver: bridge

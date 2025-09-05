@@ -1,0 +1,21 @@
+{
+  "name": "fecitac-chatbot",
+  "version": "1.0.0",
+  "description": "Chatbot para o grupo da FECITAC 2025",
+  "main": "chatbot.js",
+  "scripts": {
+    "start": "node chatbot.js",
+    "dev": "node chatbot.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "moment-timezone": "^0.5.45",
+    "openai": "^4.78.1",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "1.33.2"
+  },
+  "keywords": ["whatsapp", "chatbot", "fecitac"],
+  "author": "FECITAC Team"
+}

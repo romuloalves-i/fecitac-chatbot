@@ -49,8 +49,8 @@ COPY . .
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV NODE_ENV=production
 
-# a sua app expõe um servidor Express na 3000 (para o /qr)
-EXPOSE 3000
+# Railway atribui a porta dinamicamente via variável PORT
+# Não precisamos do EXPOSE fixo no Railway
 
 # comando de inicialização
 CMD ["node", "chatbot.js"]

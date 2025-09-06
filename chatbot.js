@@ -70,9 +70,12 @@ client.on("ready", async () => {
       console.log("🤖 Bot pronto! Aguardando mensagens no grupo...");
     } else {
       console.log(
-        "Grupo não encontrado. Bot funcionará em todas as conversas."
+        "Grupo não encontrado. Bot funcionará em TODAS as conversas."
       );
     }
+    
+    console.log("📱 Para testar, envie 'oi' ou 'menu' em qualquer conversa");
+    console.log("🔍 Monitorando todas as mensagens...");
   } catch (error) {
     console.error("Erro ao buscar grupo:", error);
   }
@@ -102,10 +105,20 @@ client.on("group_join", async (notification) => {
   }
 });
 
-// Dica: use "message" para só processar o que chega (não o que o bot envia)
+// Detectar TODAS as mensagens primeiro
+client.on("message_create", async (msg) => {
+  console.log("🔄 Qualquer mensagem (incluindo próprias):", msg.body);
+});
+
+// Processar apenas mensagens recebidas
 client.on("message", async (msg) => {
+  console.log("📥 Mensagem recebida (não própria):", msg.body);
+  
   // Evita processar mensagens do próprio bot, por segurança
-  if (msg.fromMe) return;
+  if (msg.fromMe) {
+    console.log("⏭️ Ignorando mensagem própria");
+    return;
+  }
 
   // Debug detalhado
   console.log("📨 Mensagem detectada:");

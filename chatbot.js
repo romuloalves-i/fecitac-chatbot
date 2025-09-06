@@ -279,16 +279,42 @@ client.on("auth_failure", (msg) => {
 
 client.on("disconnected", (reason) => {
   console.error("🔌 Desconectado:", reason);
-  console.log("🔄 Tentando reconectar...");
+  if (reason === 'LOGOUT') {
+    console.log("📱 WhatsApp foi desconectado manualmente");
+    console.log("💡 Reinicie o bot para gerar novo QR code");
+    process.exit(0);
+  } else {
+    console.log("🔄 Tentando reconectar...");
+    setTimeout(() => {
+      client.initialize().catch(console.error);
+    }, 5000);
+  }
 });
 
 // Tratamento global de erros
 process.on("unhandledRejection", (error, promise) => {
+  if (error.message.includes('EBUSY') || error.message.includes('resource busy')) {
+    console.log("⚠️ Arquivo de sessão em uso - isso é normal durante logout");
+    return;
+  }
   console.error("❌ Erro não tratado:", error);
   console.error("Promise:", promise);
 });
 
 process.on("uncaughtException", (error) => {
+  if (error.message.includes('EBUSY') || error.message.includes('resource busy')) {
+    console.log("⚠️ Arquivo bloqueado - reiniciando...");
+    process.exit(0);
+  }
   console.error("❌ Exceção não capturada:", error);
   process.exit(1);
+});
+
+// Limpeza ao sair
+process.on('SIGINT', () => {
+  console.log('\n🛑 Parando bot...');
+  client.destroy().then(() => {
+    console.log('✅ Bot finalizado');
+    process.exit(0);
+  }).catch(() => process.exit(0));
 });

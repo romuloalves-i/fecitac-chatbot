@@ -1,37 +1,32 @@
 # syntax=docker/dockerfile:1
 FROM node:18-alpine
 
-# Instalar dependências do sistema para ARM64
+# Instalar Chromium e dependências do Puppeteer
 RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    freetype-dev \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont \
-    python3 \
-    make \
-    g++
-
-# Variáveis do Chromium para ARM64
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+  chromium \
+  nss \
+  freetype \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont \
+  udev \
+  bash
 
 # Diretório de trabalho
 WORKDIR /app
 
-# Copiar package.json
+# Copiar manifestos e instalar deps (sem dev)
 COPY package*.json ./
-
-# Instalar dependências
-RUN npm install --only=production
+RUN npm ci --omit=dev
 
 # Copiar código
 COPY . .
 
-# Porta (se necessário)
-EXPOSE 3000
+# Variáveis usadas pelo whatsapp-web.js/puppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    NODE_ENV=production \
+    HEADLESS=true
 
-# Comando para iniciar
-CMD ["npm", "start"]
+# Subir o bot
+CMD ["node", "chatbot.js"]

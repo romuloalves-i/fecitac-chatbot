@@ -139,15 +139,16 @@ client.on("message_create", async (msg) => {
   console.log("🔄 Qualquer mensagem (incluindo próprias):", msg.body);
 });
 
-// Processar apenas mensagens recebidas
+// Processar mensagens (incluindo próprias para teste)
 client.on("message", async (msg) => {
-  console.log("📥 Mensagem recebida (não própria):", msg.body);
+  console.log("📥 Mensagem recebida:", msg.body);
+  console.log("👤 fromMe:", msg.fromMe);
   
-  // Evita processar mensagens do próprio bot, por segurança
-  if (msg.fromMe) {
-    console.log("⏭️ Ignorando mensagem própria");
-    return;
-  }
+  // Para teste, vamos permitir processar mensagens próprias também
+  // if (msg.fromMe) {
+  //   console.log("⏭️ Ignorando mensagem própria");
+  //   return;
+  // }
 
   // Debug detalhado
   console.log("📨 Mensagem detectada:");

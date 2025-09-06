@@ -88,31 +88,269 @@ const clientConfig = {
 let client = null;
 let isInitializing = false;
 
-// -------------------- Hardening robusto --------------------
-process.on("unhandledRejection", (err) => {
-  console.error("UNHANDLED REJECTION:", err?.message || err);
-  // Não mata o processo, apenas loga
-});
-
-process.on("uncaughtException", (err) => {
-  console.error("UNCAUGHT EXCEPTION:", err?.message || err);
-  // Tenta recuperar o cliente se possível
-  if (client && !isInitializing) {
-    setTimeout(() => safeInit(true), 5000);
+// -------------------- Gerenciamento de Ciclo de Vida do Container --------------------
+class ContainerLifecycleManager {
+  constructor() {
+    this.isShuttingDown = false;
+    this.activeBrowsers = new Set();
+    this.activeOperations = new Set();
+    this.shutdownTimeout = 30000; // 30s para shutdown
+    this.setupSignalHandlers();
+    this.setupErrorHandlers();
   }
-});
 
-// Função para criar cliente com error handling
+  // Configura handlers para sinais do sistema
+  setupSignalHandlers() {
+    const signals = ['SIGTERM', 'SIGINT', 'SIGQUIT'];
+    signals.forEach(signal => {
+      process.on(signal, () => this.gracefulShutdown(signal));
+    });
+  }
+
+  // Configura tratamento global de erros
+  setupErrorHandlers() {
+    process.on("unhandledRejection", (err, promise) => {
+      console.error("🔥 UNHANDLED REJECTION:", {
+        error: err?.message || err,
+        stack: err?.stack,
+        promise: promise
+      });
+      // Não mata o processo - apenas loga para análise
+    });
+
+    process.on("uncaughtException", (err) => {
+      console.error("💥 UNCAUGHT EXCEPTION:", {
+        error: err?.message || err,
+        stack: err?.stack
+      });
+      // Tenta recuperação controlada
+      this.handleCriticalError(err);
+    });
+  }
+
+  // Shutdown graceful com cleanup de recursos
+  async gracefulShutdown(signal) {
+    if (this.isShuttingDown) return;
+    
+    console.log(`🛑 Recebido ${signal} - Iniciando shutdown graceful...`);
+    this.isShuttingDown = true;
+
+    // Timeout de segurança
+    const shutdownTimer = setTimeout(() => {
+      console.log("⏰ Timeout de shutdown - forçando saída");
+      process.exit(1);
+    }, this.shutdownTimeout);
+
+    try {
+      // 1. Para de aceitar novas operações
+      isInitializing = true;
+
+      // 2. Cleanup do cliente WhatsApp
+      if (client) {
+        console.log("🔄 Limpando cliente WhatsApp...");
+        await this.cleanupWhatsAppClient();
+      }
+
+      // 3. Fecha browsers ativos
+      console.log("🌐 Fechando browsers ativos...");
+      await this.closeActiveBrowsers();
+
+      // 4. Aguarda operações pendentes
+      console.log("⏳ Aguardando operações pendentes...");
+      await this.waitForPendingOperations();
+
+      clearTimeout(shutdownTimer);
+      console.log("✅ Shutdown concluído com sucesso");
+      process.exit(0);
+
+    } catch (error) {
+      console.error("❌ Erro durante shutdown:", error);
+      clearTimeout(shutdownTimer);
+      process.exit(1);
+    }
+  }
+
+  // Limpa cliente WhatsApp de forma segura
+  async cleanupWhatsAppClient() {
+    if (!client) return;
+
+    try {
+      // Remove todos os listeners
+      client.removeAllListeners();
+      
+      // Tenta destruir o cliente de forma controlada
+      if (typeof client.destroy === 'function') {
+        await Promise.race([
+          client.destroy(),
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
+      }
+    } catch (error) {
+      console.error("Erro ao limpar cliente:", error?.message);
+    } finally {
+      client = null;
+    }
+  }
+
+  // Fecha browsers Puppeteer ativos
+  async closeActiveBrowsers() {
+    const closePromises = Array.from(this.activeBrowsers).map(async browser => {
+      try {
+        await Promise.race([
+          browser.close(),
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
+      } catch (error) {
+        console.error("Erro ao fechar browser:", error?.message);
+      }
+    });
+
+    await Promise.all(closePromises);
+    this.activeBrowsers.clear();
+  }
+
+  // Aguarda operações pendentes finalizarem
+  async waitForPendingOperations(maxWait = 10000) {
+    const start = Date.now();
+    
+    while (this.activeOperations.size > 0 && (Date.now() - start) < maxWait) {
+      console.log(`⏳ Aguardando ${this.activeOperations.size} operações...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    if (this.activeOperations.size > 0) {
+      console.log(`⚠️ ${this.activeOperations.size} operações ainda ativas após timeout`);
+    }
+  }
+
+  // Registra browser ativo
+  registerBrowser(browser) {
+    this.activeBrowsers.add(browser);
+  }
+
+  // Remove browser do registro
+  unregisterBrowser(browser) {
+    this.activeBrowsers.delete(browser);
+  }
+
+  // Registra operação ativa
+  registerOperation(operationId) {
+    this.activeOperations.add(operationId);
+    return () => this.activeOperations.delete(operationId);
+  }
+
+  // Tratamento de erros críticos
+  handleCriticalError(error) {
+    if (!this.isShuttingDown && client && !isInitializing) {
+      console.log("🔄 Tentando recuperação após erro crítico...");
+      setTimeout(() => {
+        if (!this.isShuttingDown) {
+          safeInit(true);
+        }
+      }, 5000);
+    }
+  }
+}
+
+// Instancia o gerenciador de ciclo de vida
+const lifecycleManager = new ContainerLifecycleManager();
+
+// -------------------- Pool de Operações Puppeteer Robustas --------------------
+class PuppeteerOperationPool {
+  constructor(lifecycleManager) {
+    this.lifecycleManager = lifecycleManager;
+    this.operationTimeout = 30000; // 30s timeout padrão
+  }
+
+  // Executa operação Puppeteer com timeout e error handling
+  async executeOperation(operationName, operation, timeout = this.operationTimeout) {
+    // Verifica se não estamos em shutdown
+    if (this.lifecycleManager.isShuttingDown) {
+      throw new Error(`Operação ${operationName} cancelada: container em shutdown`);
+    }
+
+    const operationId = `${operationName}-${Date.now()}`;
+    const cleanup = this.lifecycleManager.registerOperation(operationId);
+
+    try {
+      console.log(`🔄 Iniciando operação: ${operationName}`);
+      
+      const result = await Promise.race([
+        operation(),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Timeout na operação ${operationName}`)), timeout);
+        })
+      ]);
+
+      console.log(`✅ Operação concluída: ${operationName}`);
+      return result;
+
+    } catch (error) {
+      console.error(`❌ Erro na operação ${operationName}:`, error?.message || error);
+      throw error;
+    } finally {
+      cleanup();
+    }
+  }
+
+  // Verifica se sessão Puppeteer está ativa
+  async isSessionActive(page) {
+    try {
+      if (!page || page.isClosed()) return false;
+      
+      // Testa uma operação simples
+      await Promise.race([
+        page.evaluate(() => true),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Session test timeout')), 5000))
+      ]);
+      
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Executa comando Puppeteer com verificação de sessão
+  async safeExecute(page, commandName, command, timeout = 15000) {
+    if (!(await this.isSessionActive(page))) {
+      throw new Error(`Sessão inativa para comando: ${commandName}`);
+    }
+
+    return this.executeOperation(commandName, command, timeout);
+  }
+}
+
+// Instancia o pool de operações
+const puppeteerPool = new PuppeteerOperationPool(lifecycleManager);
+
+// Função para criar cliente com gerenciamento robusto
 function createClient() {
   try {
+    // Verifica se não estamos em shutdown
+    if (lifecycleManager.isShuttingDown) {
+      console.log("⚠️ Não criando cliente: container em shutdown");
+      return null;
+    }
+
     if (client) {
       console.log("🔄 Destruindo cliente anterior...");
-      client.removeAllListeners();
+      try {
+        client.removeAllListeners();
+      } catch (error) {
+        console.error("Erro ao remover listeners:", error?.message);
+      }
       client = null;
     }
     
+    console.log("🚀 Criando novo cliente WhatsApp...");
     client = new Client(clientConfig);
     setupClientEvents();
+    
+    // Registra browser quando disponível
+    if (client.pupPage) {
+      lifecycleManager.registerBrowser(client.pupPage.browser());
+    }
+    
     return client;
   } catch (error) {
     console.error("❌ Erro ao criar cliente:", error?.message || error);
@@ -353,60 +591,140 @@ Escolha uma opção:
   }
 }
 
-// -------------------- Inicialização robusta --------------------
+// -------------------- Logging Estruturado --------------------
+class StructuredLogger {
+  constructor() {
+    this.startTime = Date.now();
+    this.stats = {
+      operations: 0,
+      errors: 0,
+      crashes: 0,
+      reconnects: 0
+    };
+  }
+
+  // Log com contexto estruturado
+  log(level, message, context = {}) {
+    const timestamp = new Date().toISOString();
+    const uptime = Math.floor((Date.now() - this.startTime) / 1000);
+    
+    const logEntry = {
+      timestamp,
+      level,
+      message,
+      uptime: `${uptime}s`,
+      memory: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`,
+      ...context,
+      stats: this.stats
+    };
+
+    console.log(JSON.stringify(logEntry));
+  }
+
+  info(message, context) { this.log('info', message, context); }
+  error(message, context) { 
+    this.stats.errors++;
+    this.log('error', message, context); 
+  }
+  warn(message, context) { this.log('warn', message, context); }
+}
+
+const logger = new StructuredLogger();
+
+// -------------------- Inicialização Robusta com Logging --------------------
 async function safeInit(isRetry = false) {
   if (isInitializing) {
-    console.log("⏳ Inicialização já em andamento...");
+    logger.warn("Inicialização já em andamento");
+    return;
+  }
+
+  // Verifica se não estamos em shutdown
+  if (lifecycleManager.isShuttingDown) {
+    logger.warn("Inicialização cancelada: container em shutdown");
     return;
   }
 
   isInitializing = true;
+  const initStartTime = Date.now();
   
   try {
-    console.log(isRetry ? "🔄 Re-inicializando..." : "🚀 Inicializando WhatsApp...");
+    logger.info(isRetry ? "Re-inicializando cliente" : "Iniciando cliente", {
+      retry: isRetry,
+      attempt: isRetry ? ++logger.stats.reconnects : 1
+    });
     
-    // Criar novo cliente se necessário
-    if (!client || isRetry) {
-      client = createClient();
-      if (!client) {
-        throw new Error("Falha ao criar cliente");
+    // Usar pool de operações para criar cliente
+    await puppeteerPool.executeOperation("create-client", async () => {
+      if (!client || isRetry) {
+        client = createClient();
+        if (!client) {
+          throw new Error("Falha ao criar cliente WhatsApp");
+        }
       }
-    }
+    });
 
-    // Inicializar com timeout
-    await Promise.race([
-      client.initialize(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout na inicialização')), 90000)
-      )
-    ]);
+    // Inicializar cliente com pool de operações
+    await puppeteerPool.executeOperation("initialize-client", async () => {
+      return client.initialize();
+    }, 90000); // 90s timeout
     
-    console.log("✅ Inicialização concluída com sucesso");
+    const initDuration = Date.now() - initStartTime;
+    logger.info("Inicialização concluída com sucesso", {
+      duration: `${initDuration}ms`,
+      client_ready: true
+    });
     
   } catch (err) {
-    console.error("❌ Erro ao inicializar:", err?.message || err);
+    const initDuration = Date.now() - initStartTime;
+    logger.error("Erro na inicialização", {
+      error: err?.message || err,
+      stack: err?.stack,
+      duration: `${initDuration}ms`,
+      retry: isRetry
+    });
     
-    // Cleanup em caso de erro
-    if (client) {
-      try {
-        client.removeAllListeners();
-      } catch (e) {
-        // Ignorar erros de cleanup
-      }
-      client = null;
+    // Cleanup controlado
+    await cleanupFailedClient();
+    
+    // Retry com backoff exponencial (apenas se não estiver em shutdown)
+    if (!lifecycleManager.isShuttingDown) {
+      const retryDelay = isRetry ? 15000 : 8000;
+      logger.info("Agendando nova tentativa", { 
+        delay: `${retryDelay/1000}s`,
+        next_attempt: logger.stats.reconnects + 1 
+      });
+      
+      setTimeout(() => {
+        isInitializing = false;
+        safeInit(true);
+      }, retryDelay);
     }
-    
-    // Retry com backoff exponencial
-    const retryDelay = isRetry ? 10000 : 5000;
-    console.log(`🔄 Tentando novamente em ${retryDelay/1000}s...`);
-    setTimeout(() => {
-      isInitializing = false;
-      safeInit(true);
-    }, retryDelay);
     return;
   }
   
   isInitializing = false;
+}
+
+// Cleanup de cliente com falha
+async function cleanupFailedClient() {
+  if (!client) return;
+
+  try {
+    await puppeteerPool.executeOperation("cleanup-failed-client", async () => {
+      client.removeAllListeners();
+      
+      // Tenta fechar browser se existir
+      if (client.pupPage && client.pupPage.browser) {
+        const browser = client.pupPage.browser();
+        lifecycleManager.unregisterBrowser(browser);
+        await browser.close();
+      }
+    }, 10000);
+  } catch (error) {
+    logger.error("Erro durante cleanup", { error: error?.message });
+  } finally {
+    client = null;
+  }
 }
 
 // -------------------- Servidor HTTP para QR --------------------

@@ -141,9 +141,9 @@ client.on("message_create", async (msg) => {
     return;
   }
   
-  // Para evitar loop infinito, só processar triggers e opções do usuário
-  const userInputs = ['oi', 'menu', 'olá', 'ola', 'dia', 'tarde', 'noite', '1', '2', '3', '4', '5'];
-  if (msg.fromMe && !userInputs.some(input => msg.body.toLowerCase().includes(input.toLowerCase()))) {
+  // Ignorar completamente mensagens do próprio bot
+  if (msg.fromMe) {
+    console.log("⏭️ Ignorando mensagem própria");
     return;
   }
   

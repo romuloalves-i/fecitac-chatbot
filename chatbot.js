@@ -31,14 +31,22 @@ let TARGET_GROUP_ID = null;
 
 // serviço de leitura do qr code
 client.on("qr", (qr) => {
+  console.log("📱 QR CODE GERADO!");
+  console.log("Escaneie este QR com seu WhatsApp:");
   qrcode.generate(qr, { small: true }); // ASCII
-  console.log("\n🔗 Abra o QR como imagem:");
-  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}\n`);
+  console.log("\n🔗 Ou abra este link para ver o QR como imagem:");
+  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`);
+  console.log("--------------------\n");
+});
+
+// autenticação
+client.on("authenticated", () => {
+  console.log("✅ Autenticado com sucesso!");
 });
 
 // pronto
 client.on("ready", async () => {
-  console.log("Tudo certo! WhatsApp conectado.");
+  console.log("🚀 Tudo certo! WhatsApp conectado.");
 
   try {
     const chats = await client.getChats();

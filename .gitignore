@@ -1,9 +1,40 @@
+# Dependências
 node_modules/
+
+# Dados sensíveis do WhatsApp Web
 .wwebjs_auth/
 .wwebjs_cache/
+.wwebjs_*
 session.json
+*.session
+
+# Logs e debugging
 *.log
+debug.log
+error.log
+
+# Variáveis de ambiente
 .env
+.env.local
+.env.production
+
+# Dados de usuários (se houver)
+users.json
+contacts.json
+chats.json
+messages.json
+
+# Arquivos do sistema
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Executáveis
 *.exe
+*.msi
+
+# Configurações locais
+.claude/
+.vscode/
+*.swp
+*.tmp

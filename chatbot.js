@@ -8,21 +8,20 @@ const {
   MessageMedia,
 } = require("whatsapp-web.js");
 
-// Configurações
+// Configurações otimizadas para Railway e local
+const puppeteerConfig = process.env.NODE_ENV === 'production' ? {
+  headless: true,
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+} : {
+  headless: false,
+  args: ['--no-sandbox'],
+};
+
 const client = new Client({
   authStrategy: new LocalAuth({
     dataPath: "./.wwebjs_auth",
   }),
-  puppeteer: {
-    headless: false,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox", 
-      "--disable-web-security",
-      "--disable-features=VizDisplayCompositor"
-    ],
-    timeout: 0, // Remove timeout
-  },
+  puppeteer: puppeteerConfig,
 });
 // ID do grupo específico (será obtido quando o bot conectar)
 let TARGET_GROUP_ID = null;
@@ -114,10 +113,10 @@ client.on("message", async (msg) => {
   console.log("- É do grupo alvo?", isFromTargetGroup);
   console.log("---");
 
-  // Menu
+  // Menu - simplifiquei a detecção
   if (
     msg.body &&
-    /(menu|dia|tarde|noite|oi|olá|ola)/i.test(msg.body) &&
+    /\b(menu|oi|olá|ola|dia|tarde|noite)\b/i.test(msg.body.toLowerCase()) &&
     isFromTargetGroup
   ) {
     const chat = await msg.getChat();

@@ -107,19 +107,24 @@ client.on("message", async (msg) => {
   // Evita processar mensagens do próprio bot, por segurança
   if (msg.fromMe) return;
 
-  // Debug
+  // Debug detalhado
   console.log("📨 Mensagem detectada:");
   console.log("- De:", msg.from);
   console.log("- Texto:", msg.body);
   console.log("- É grupo?", msg.from.endsWith("@g.us"));
   console.log("- TARGET_GROUP_ID:", TARGET_GROUP_ID);
+  console.log("- fromMe?", msg.fromMe);
 
-  // Verificar se é do grupo alvo (se definido) ou de qualquer grupo
+  // Verificar se deve processar mensagem (grupo específico, qualquer grupo, ou conversa direta)
   const isFromTargetGroup = TARGET_GROUP_ID
-    ? msg.from === TARGET_GROUP_ID
-    : msg.from.endsWith("@g.us");
+    ? msg.from === TARGET_GROUP_ID  // Grupo específico encontrado
+    : true;  // Se não encontrou grupo específico, aceita qualquer conversa
+    
+  const isFromGroup = msg.from.endsWith("@g.us");
 
   console.log("- É do grupo alvo?", isFromTargetGroup);
+  console.log("- É de grupo?", isFromGroup);
+  console.log("- Deve processar?", isFromTargetGroup);
   console.log("---");
 
   // Trigger do menu - detecção simplificada

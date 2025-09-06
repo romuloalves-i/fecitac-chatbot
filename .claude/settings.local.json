@@ -9,7 +9,12 @@
       "Bash(npm start)",
       "Bash(timeout 15s npm start)",
       "Bash(timeout:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(docker:*)",
+      "Bash(winget install:*)",
+      "Bash(choco install:*)",
+      "Bash(npm run:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

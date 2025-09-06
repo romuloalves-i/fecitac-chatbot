@@ -1,11 +1,43 @@
 version: "3.8"
+
 services:
   chatbot:
-    build: .
-    container_name: chatbot
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: fecitac-chatbot
     restart: unless-stopped
+
+    # mantém a sessão do WhatsApp (LocalAuth) fora do container
+    volumes:
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+
     environment:
       - NODE_ENV=production
-    volumes:
-      - .wwebjs_auth:/app/.wwebjs_auth
-    platform: linux/amd64
+      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+      # Se quiser, defina aqui seu domínio público (Render/Railway) p/ logs do QR
+      # - RAILWAY_STATIC_URL=https://seu-subdominio.railway.app
+
+    # expõe o servidor do QR (/ e /qr)
+    ports:
+      - "3000:3000"
+
+    # healthcheck simples para garantir que o processo está ok
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://localhost:3000/qr || curl -fsS http://localhost:3000/ || exit 1",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    # logs mais enxutos (opcional)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

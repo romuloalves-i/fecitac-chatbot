@@ -2,6 +2,15 @@
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const fs = require("fs");
+const path = require("path");
+
+// === NEW: servidor para exibir o QR como imagem ===
+const express = require("express");
+const QR = require("qrcode");
+const app = express();
+let latestQrPngB64 = null; // guarda o último QR gerado em base64
+let isAuthenticated = false;
+let lastQrTime = 0;
 
 let TARGET_GROUP_ID = null;
 
@@ -33,6 +42,10 @@ const puppeteerConfig = {
     "--no-first-run",
     "--no-zygote",
     "--disable-features=site-per-process",
+    "--disable-extensions",
+    "--disable-default-apps",
+    "--disable-web-security",
+    "--single-process",
   ],
 };
 
@@ -52,9 +65,17 @@ if (isProduction) {
 }
 
 // -------------------- Instância do Client --------------------
+const authPath = path.resolve("./.wwebjs_auth");
 const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: "./.wwebjs_auth" }),
+  authStrategy: new LocalAuth({ 
+    dataPath: authPath,
+    clientId: "fecitac-bot-session"
+  }),
   puppeteer: puppeteerConfig,
+  webVersionCache: {
+    type: "remote",
+    remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html",
+  }
 });
 
 // -------------------- Hardening --------------------
@@ -66,25 +87,57 @@ process.on("uncaughtException", (err) =>
 );
 
 // -------------------- Eventos --------------------
-client.on("qr", (qr) => {
-  console.log("📲 QR CODE GERADO — escaneie no WhatsApp:");
+client.on("qr", async (qr) => {
+  const currentTime = Date.now();
+  lastQrTime = currentTime;
+  isAuthenticated = false;
+  
+  console.log("📲 QR CODE GERADO — sessão expirada ou nova");
+  
+  // QR ASCII no terminal (sempre mostrar para debug)
   qrcode.generate(qr, { small: true });
-  console.log(
-    "🔗 QR como imagem:",
-    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
-      qr
-    )}`
-  );
+
+  // Gera PNG em memória p/ servir via HTTP
+  try {
+    const buf = await QR.toBuffer(qr, { width: 320, margin: 1 });
+    latestQrPngB64 = buf.toString("base64");
+    console.log("✅ QR PNG gerado com sucesso");
+  } catch (e) {
+    console.error("❌ Erro ao gerar PNG do QR:", e);
+  }
+
+  const base =
+    process.env.RAILWAY_STATIC_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN ||
+    `http://localhost:${process.env.PORT || 3000}`;
+  console.log(`🔗 Abra para escanear o QR: ${base}/qr`);
+  console.log(`⏰ QR válido por ~20 segundos. Gerado em: ${new Date(currentTime).toLocaleString('pt-BR')}`);
 });
 
-client.on("authenticated", () => console.log("🔐 Autenticado no WhatsApp."));
+client.on("authenticated", () => {
+  console.log("🔐 Autenticado no WhatsApp.");
+  isAuthenticated = true;
+  latestQrPngB64 = null; // limpa QR após autenticação
+});
 
-client.on("auth_failure", (msg) =>
-  console.error("❌ Falha de autenticação:", msg)
-);
+client.on("auth_failure", (msg) => {
+  console.error("❌ Falha de autenticação:", msg);
+  isAuthenticated = false;
+  // Remove dados de auth corrompidos
+  try {
+    if (fs.existsSync(authPath)) {
+      fs.rmSync(authPath, { recursive: true, force: true });
+      console.log("🗑️ Dados de autenticação removidos para restart limpo");
+    }
+  } catch (e) {
+    console.error("Erro ao limpar auth:", e);
+  }
+});
 
 client.on("ready", async () => {
-  console.log("✅ Cliente pronto! Bot conectado.");
+  const readyTime = new Date().toLocaleString('pt-BR');
+  console.log(`✅ Cliente pronto! Bot conectado em ${readyTime}`);
+  isAuthenticated = true;
 
   try {
     const chats = await client.getChats();
@@ -107,9 +160,15 @@ client.on("ready", async () => {
       );
     }
 
-    console.log("📱 Envie 'oi' ou 'menu' para testar.");
+    console.log("📱 Bot ativo - aguardando mensagens...");
+    
+    // Log de status a cada 5 minutos para monitoramento
+    setInterval(() => {
+      console.log(`🔄 Status: Bot online - ${new Date().toLocaleString('pt-BR')} - Auth: ${isAuthenticated}`);
+    }, 5 * 60 * 1000);
+    
   } catch (error) {
-    console.error("Erro ao buscar grupo:", error);
+    console.error("❌ Erro ao inicializar bot:", error);
   }
 });
 
@@ -232,8 +291,83 @@ async function safeInit(isRetry = false) {
   }
 }
 
-// Keep-alive opcional
-setInterval(() => console.log("⏱️ keep-alive"), 60 * 1000);
+// -------------------- Servidor HTTP para QR --------------------
+app.get("/", (_req, res) => {
+  const statusText = isAuthenticated 
+    ? "✅ Bot conectado e funcionando" 
+    : latestQrPngB64 
+    ? "📲 Escaneie o QR para conectar" 
+    : "⏳ Aguardando geração do QR...";
+    
+  res.type("html").send(`
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="30">
+    <style>
+      body{font-family:system-ui;margin:2rem;text-align:center}
+      img{max-width:100%;height:auto;border:2px solid #ccc;border-radius:8px}
+      .status{padding:1rem;margin:1rem 0;border-radius:8px;font-weight:bold}
+      .connected{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+      .waiting{background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
+    </style>
+    <h1>🤖 FECITAC Bot</h1>
+    <div class="status ${isAuthenticated ? 'connected' : 'waiting'}">${statusText}</div>
+    ${
+      !isAuthenticated && latestQrPngB64
+        ? `
+          <p>📱 <strong>Escaneie com WhatsApp:</strong></p>
+          <img alt="QR Code" src="data:image/png;base64,${latestQrPngB64}">
+          <p><small>⏰ QR expira em ~20 segundos</small></p>
+          <p><a href="/qr">🖼️ Ver apenas a imagem</a></p>
+        `
+        : !isAuthenticated
+        ? `<p><em>⏳ Aguardando geração do QR...</em></p>`
+        : `<p>🎉 Bot conectado! Pode fechar esta aba.</p>`
+    }
+    <hr style="margin:2rem 0">
+    <p><a href="/health">🔍 Status técnico</a></p>
+  `);
+});
+
+app.get("/qr", (_req, res) => {
+  if (!latestQrPngB64 || isAuthenticated)
+    return res
+      .status(404)
+      .send("QR não disponível. Bot pode já estar conectado.");
+  const img = Buffer.from(latestQrPngB64, "base64");
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(img);
+});
+
+app.get("/health", (_req, res) => {
+  const uptime = process.uptime();
+  const memUsage = process.memoryUsage();
+  
+  res.json({
+    status: "ok",
+    bot: {
+      authenticated: isAuthenticated,
+      target_group: !!TARGET_GROUP_ID,
+      last_qr_time: lastQrTime ? new Date(lastQrTime).toISOString() : null
+    },
+    system: {
+      uptime: Math.floor(uptime),
+      uptime_human: `${Math.floor(uptime / 60)}m ${Math.floor(uptime % 60)}s`,
+      memory_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
+      environment: isProduction ? "production" : "development"
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  const base =
+    process.env.RAILWAY_STATIC_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN ||
+    `http://localhost:${PORT}`;
+  console.log(`🌐 HTTP pronto em ${base}  (QR em ${base}/qr)`);
+});
 
 // Boot
 console.log("🚀 Iniciando FECITAC Bot...");
@@ -242,4 +376,13 @@ console.log(
     isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"
   }`
 );
+console.log(`💾 Dados de autenticação: ${authPath}`);
+
+// Verificar se já tem sessão
+if (fs.existsSync(authPath)) {
+  console.log("🔑 Dados de sessão encontrados - tentando conectar...");
+} else {
+  console.log("🆕 Nova sessão - QR será gerado");
+}
+
 safeInit();

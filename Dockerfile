@@ -1,7 +1,7 @@
-# Imagem Linux/amd64 (compatível com Windows x64 ao buildar)
+# Força build para Linux/amd64 (mesmo em Windows x64)
 FROM --platform=linux/amd64 node:20-bookworm-slim
 
-# Instala Chromium + dependências que o Puppeteer/Chromium precisam
+# Atualiza e instala Chromium + deps necessárias pro Puppeteer/Chromium
 RUN apt-get update && apt-get install -y \
     chromium \
     ca-certificates \
@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
-    libatspi2.0-0 \
     libc6 \
     libcairo2 \
     libcups2 \
@@ -30,19 +29,28 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxfixes3 \
     libxrandr2 \
-    wget \
+    wget curl \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Copia manifestos primeiro para aproveitar cache
 COPY package*.json ./
 
-# NÃO baixe o Chromium empacotado do puppeteer — usaremos o do sistema
+# Não baixar o Chromium do Puppeteer (vamos usar o do sistema)
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN npm ci
+# Dica: travar dependências exatamente como no package-lock
+RUN npm ci --omit=dev
 
+# Copia o restante do projeto
 COPY . .
 
-# Diga ao Puppeteer onde está o Chromium do sistema
+# informa ao Puppeteer onde está o executável do Chromium do sistema
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV NODE_ENV=production
 
-CMD ["node", "index.js"]
+# a sua app expõe um servidor Express na 3000 (para o /qr)
+EXPOSE 3000
+
+# comando de inicialização
+CMD ["node", "chatbot.js"]

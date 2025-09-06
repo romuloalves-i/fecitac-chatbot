@@ -824,34 +824,101 @@ app.get("/qr", (_req, res) => {
   `);
 });
 
+// Health check robusto
 app.get("/health", (_req, res) => {
   const uptime = process.uptime();
   const memUsage = process.memoryUsage();
   
-  res.json({
+  const healthData = {
     status: "ok",
+    server: {
+      running: true,
+      port: PORT,
+      host: HOST,
+      url: process.env.RAILWAY_STATIC_URL || `http://${HOST}:${PORT}`
+    },
     bot: {
       authenticated: isAuthenticated,
       target_group: !!TARGET_GROUP_ID,
-      last_qr_time: lastQrTime ? new Date(lastQrTime).toISOString() : null
+      last_qr_time: lastQrTime ? new Date(lastQrTime).toISOString() : null,
+      initializing: isInitializing,
+      shutdown: lifecycleManager?.isShuttingDown || false
     },
     system: {
       uptime: Math.floor(uptime),
       uptime_human: `${Math.floor(uptime / 60)}m ${Math.floor(uptime % 60)}s`,
       memory_mb: Math.round(memUsage.heapUsed / 1024 / 1024),
-      environment: isProduction ? "production" : "development"
+      environment: isProduction ? "production" : "development",
+      node_version: process.version
     },
+    railway: {
+      environment: process.env.RAILWAY_ENVIRONMENT || "none",
+      static_url: process.env.RAILWAY_STATIC_URL || "none",
+      public_domain: process.env.RAILWAY_PUBLIC_DOMAIN || "none"
+    },
+    timestamp: new Date().toISOString()
+  };
+
+  logger.info("Health check solicitado", healthData);
+  res.json(healthData);
+});
+
+// Endpoint básico para testar conectividade
+app.get("/ping", (_req, res) => {
+  res.json({ 
+    message: "pong", 
+    timestamp: new Date().toISOString(),
+    server: "FECITAC Bot Railway"
+  });
+});
+
+// Tratamento de erro de servidor
+app.use((err, req, res, next) => {
+  logger.error("Erro no servidor Express", {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method
+  });
+  
+  res.status(500).json({
+    error: "Erro interno do servidor",
+    message: isProduction ? "Erro interno" : err.message,
     timestamp: new Date().toISOString()
   });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const HOST = process.env.HOST || '0.0.0.0';
+
+// Log detalhado da inicialização
+console.log(`🔧 Configuração do servidor:`, {
+  PORT,
+  HOST,
+  NODE_ENV: process.env.NODE_ENV,
+  RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
+  RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL
+});
+
+app.listen(PORT, HOST, () => {
   const base =
     process.env.RAILWAY_STATIC_URL ||
     process.env.RAILWAY_PUBLIC_DOMAIN ||
-    `http://localhost:${PORT}`;
-  console.log(`🌐 HTTP pronto em ${base}  (QR em ${base}/qr)`);
+    `http://${HOST}:${PORT}`;
+  
+  console.log(`🌐 HTTP servidor iniciado!`);
+  console.log(`📍 Host: ${HOST}`);
+  console.log(`🔌 Porta: ${PORT}`);
+  console.log(`🔗 URL: ${base}`);
+  console.log(`📱 QR: ${base}/qr`);
+  
+  // Log estruturado para Railway
+  logger.info("Servidor HTTP iniciado", {
+    host: HOST,
+    port: PORT,
+    url: base,
+    qr_url: `${base}/qr`
+  });
 });
 
 // -------------------- Inicialização do Sistema --------------------

@@ -14,7 +14,8 @@
       "Bash(winget install:*)",
       "Bash(choco install:*)",
       "Bash(npm run:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(railway link:*)"
     ],
     "deny": [],
     "ask": []

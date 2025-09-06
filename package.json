@@ -14,8 +14,12 @@
     "moment-timezone": "^0.5.45",
     "openai": "^4.78.1",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "1.33.2"
+    "whatsapp-web.js": "^1.25.0"
   },
-  "keywords": ["whatsapp", "chatbot", "fecitac"],
+  "keywords": [
+    "whatsapp",
+    "chatbot",
+    "fecitac"
+  ],
   "author": "FECITAC Team"
 }

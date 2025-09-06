@@ -11,18 +11,17 @@ const {
 // Configurações
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: "./.wwebjs_auth", // manter sessão entre deploys
+    dataPath: "./.wwebjs_auth",
   }),
   puppeteer: {
-    headless: process.env.HEADLESS !== "false", // true por padrão na nuvem
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // deixa o Puppeteer encontrar automaticamente
+    headless: false,
     args: [
       "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-zygote",
+      "--disable-setuid-sandbox", 
+      "--disable-web-security",
+      "--disable-features=VizDisplayCompositor"
     ],
+    timeout: 0, // Remove timeout
   },
 });
 // ID do grupo específico (será obtido quando o bot conectar)
@@ -34,7 +33,11 @@ client.on("qr", (qr) => {
   console.log("Escaneie este QR com seu WhatsApp:");
   qrcode.generate(qr, { small: true }); // ASCII
   console.log("\n🔗 Ou abra este link para ver o QR como imagem:");
-  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}`);
+  console.log(
+    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
+      qr
+    )}`
+  );
   console.log("--------------------\n");
 });
 
@@ -71,11 +74,15 @@ client.on("ready", async () => {
   }
 });
 
+console.log("🚀 Iniciando bot...");
+
 // Inicializa com tratamento de erro
-client.initialize().catch(err => {
+client.initialize().catch((err) => {
   console.error("❌ Erro ao inicializar cliente:", err);
   process.exit(1);
 });
+
+console.log("⏳ Aguardando conexão com WhatsApp...");
 
 // Utilitário: delay
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));

@@ -72,8 +72,11 @@ client.on("ready", async () => {
   }
 });
 
-// Inicializa
-client.initialize();
+// Inicializa com tratamento de erro
+client.initialize().catch(err => {
+  console.error("❌ Erro ao inicializar cliente:", err);
+  process.exit(1);
+});
 
 // Utilitário: delay
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -210,9 +213,24 @@ client.on("message", async (msg) => {
   }
 });
 
-// Tratadores úteis
-client.on("auth_failure", (m) => console.error("Falha de autenticação:", m));
-client.on("disconnected", (r) => console.error("Desconectado:", r));
-process.on("unhandledRejection", (e) =>
-  console.error("UnhandledRejection:", e)
-);
+// Tratadores de erro melhorados
+client.on("auth_failure", (msg) => {
+  console.error("❌ Falha de autenticação:", msg);
+  process.exit(1);
+});
+
+client.on("disconnected", (reason) => {
+  console.error("🔌 Desconectado:", reason);
+  console.log("🔄 Tentando reconectar...");
+});
+
+// Tratamento global de erros
+process.on("unhandledRejection", (error, promise) => {
+  console.error("❌ Erro não tratado:", error);
+  console.error("Promise:", promise);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("❌ Exceção não capturada:", error);
+  process.exit(1);
+});

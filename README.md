@@ -55,4 +55,4 @@ docker-compose logs -f fecitac-chatbot
 ## 💰 Custo:
 - Railway: Gratuito até $5/mês de uso
 - Render: Gratuito (suspende após inatividade)
-- Heroku: $7/mês
+- Heroku: $7/mês# Force rebuild Sat, Sep  6, 2025 12:42:47 PM

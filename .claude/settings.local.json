@@ -5,7 +5,11 @@
       "Bash(git rm:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npm start)",
+      "Bash(timeout 15s npm start)",
+      "Bash(timeout:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

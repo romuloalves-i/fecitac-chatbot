@@ -32,12 +32,8 @@ let TARGET_GROUP_ID = null;
 // serviço de leitura do qr code
 client.on("qr", (qr) => {
   qrcode.generate(qr, { small: true }); // ASCII
-  console.log("\nAbra o QR como imagem:");
-  console.log(
-    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
-      qr
-    )}\n`
-  );
+  console.log("\n🔗 Abra o QR como imagem:");
+  console.log(`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(qr)}\n`);
 });
 
 // pronto

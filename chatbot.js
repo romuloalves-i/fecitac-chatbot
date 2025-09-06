@@ -31,11 +31,13 @@ let TARGET_GROUP_ID = null;
 
 // serviço de leitura do qr code
 client.on("qr", (qr) => {
-  console.log("QR RECEBIDO:");
-  console.log("Abra o WhatsApp Web em seu celular e escaneie este QR:");
-  console.log("QR Code:", qr);
-  console.log("Ou acesse: https://wa.me/qr/" + qr);
   qrcode.generate(qr, { small: true });
+  console.log("\nAbra este link para ver o QR como imagem:");
+  console.log(
+    `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
+      qr
+    )}\n`
+  );
 });
 
 // pronto

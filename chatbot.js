@@ -900,6 +900,12 @@ console.log(`🔧 Configuração do servidor:`, {
   RAILWAY_STATIC_URL: process.env.RAILWAY_STATIC_URL
 });
 
+// -------------------- Inicialização do Sistema --------------------
+console.log("🚀 Iniciando FECITAC Bot...");
+console.log(`📍 Ambiente: ${isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"}`);
+console.log(`💾 Dados de autenticação: ${authPath}`);
+
+// PRIMEIRO: Inicializar servidor HTTP (essencial para Railway)
 app.listen(PORT, HOST, () => {
   const base =
     process.env.RAILWAY_STATIC_URL ||
@@ -919,19 +925,22 @@ app.listen(PORT, HOST, () => {
     url: base,
     qr_url: `${base}/qr`
   });
+
+  // SEGUNDO: Depois do servidor, inicializar WhatsApp (pode falhar)
+  setTimeout(() => {
+    console.log("🔄 Iniciando cliente WhatsApp...");
+    
+    // Verificar se já tem sessão salva
+    if (fs.existsSync(authPath)) {
+      console.log("🔑 Dados de sessão encontrados - tentando conectar...");
+    } else {
+      console.log("🆕 Nova sessão - QR será gerado");
+    }
+
+    // Inicializar cliente WhatsApp
+    safeInit().catch(error => {
+      console.error("❌ Erro fatal na inicialização WhatsApp:", error);
+      logger.error("Falha crítica na inicialização", { error: error.message });
+    });
+  }, 2000); // Aguarda 2s após servidor HTTP estar pronto
 });
-
-// -------------------- Inicialização do Sistema --------------------
-console.log("🚀 Iniciando FECITAC Bot...");
-console.log(`📍 Ambiente: ${isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"}`);
-console.log(`💾 Dados de autenticação: ${authPath}`);
-
-// Verificar se já tem sessão salva
-if (fs.existsSync(authPath)) {
-  console.log("🔑 Dados de sessão encontrados - tentando conectar...");
-} else {
-  console.log("🆕 Nova sessão - QR será gerado");
-}
-
-// Inicializar cliente
-safeInit();

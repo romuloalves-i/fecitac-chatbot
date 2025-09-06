@@ -96,12 +96,15 @@ client.on("qr", async (qr) => {
   
   console.log("📲 QR CODE GERADO — sessão expirada ou nova");
   
-  // QR ASCII no terminal (sempre mostrar para debug)
-  qrcode.generate(qr, { small: true });
+  // QR ASCII apenas local (nos logs do Railway fica ilegível)
+  if (!isProduction) {
+    console.log("📱 QR para escaneamento:");
+    qrcode.generate(qr, { small: true });
+  }
 
   // Gera PNG em memória p/ servir via HTTP
   try {
-    const buf = await QR.toBuffer(qr, { width: 320, margin: 1 });
+    const buf = await QR.toBuffer(qr, { width: 400, margin: 2 });
     latestQrPngB64 = buf.toString("base64");
     console.log("✅ QR PNG gerado com sucesso");
   } catch (e) {
@@ -112,8 +115,19 @@ client.on("qr", async (qr) => {
     process.env.RAILWAY_STATIC_URL ||
     process.env.RAILWAY_PUBLIC_DOMAIN ||
     `http://localhost:${process.env.PORT || 3000}`;
-  console.log(`🔗 Abra para escanear o QR: ${base}/qr`);
-  console.log(`⏰ QR válido por ~20 segundos. Gerado em: ${new Date(currentTime).toLocaleString('pt-BR')}`);
+    
+  if (isProduction) {
+    console.log(`🌐 ===== RAILWAY: ESCANEIE O QR ===== 🌐`);
+    console.log(`📱 1. Abra este link no CELULAR:`);
+    console.log(`🔗 ${base}/qr`);
+    console.log(`📱 2. Escaneie o QR que aparece na tela`);
+    console.log(`⏰ QR expira em ~20 segundos`);
+    console.log(`🌐 ================================== 🌐`);
+  } else {
+    console.log(`🔗 Também disponível em: ${base}/qr`);
+  }
+  
+  console.log(`⏰ QR gerado em: ${new Date(currentTime).toLocaleString('pt-BR')}`);
 });
 
 client.on("authenticated", () => {
@@ -303,42 +317,91 @@ app.get("/", (_req, res) => {
     
   res.type("html").send(`
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="30">
+    <meta http-equiv="refresh" content="15">
     <style>
-      body{font-family:system-ui;margin:2rem;text-align:center}
-      img{max-width:100%;height:auto;border:2px solid #ccc;border-radius:8px}
-      .status{padding:1rem;margin:1rem 0;border-radius:8px;font-weight:bold}
-      .connected{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
-      .waiting{background:#fff3cd;color:#856404;border:1px solid #ffeaa7}
+      body{font-family:system-ui;margin:1rem;text-align:center;background:#f8f9fa}
+      .container{max-width:500px;margin:0 auto;padding:1rem;background:white;border-radius:12px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
+      img{width:300px;height:300px;border:3px solid #007bff;border-radius:12px;margin:1rem 0}
+      .status{padding:1rem;margin:1rem 0;border-radius:8px;font-weight:bold;font-size:1.1em}
+      .connected{background:#d4edda;color:#155724;border:2px solid #c3e6cb}
+      .waiting{background:#fff3cd;color:#856404;border:2px solid #ffeaa7}
+      .qr-container{background:#f8f9fa;padding:1.5rem;border-radius:12px;margin:1rem 0}
+      h1{color:#007bff;margin-bottom:0.5rem}
+      .instructions{background:#e7f3ff;padding:1rem;border-radius:8px;margin:1rem 0;border-left:4px solid #007bff}
+      .btn{display:inline-block;padding:0.75rem 1.5rem;background:#007bff;color:white;text-decoration:none;border-radius:6px;margin:0.5rem}
+      .btn:hover{background:#0056b3}
     </style>
-    <h1>🤖 FECITAC Bot</h1>
-    <div class="status ${isAuthenticated ? 'connected' : 'waiting'}">${statusText}</div>
-    ${
-      !isAuthenticated && latestQrPngB64
-        ? `
-          <p>📱 <strong>Escaneie com WhatsApp:</strong></p>
-          <img alt="QR Code" src="data:image/png;base64,${latestQrPngB64}">
-          <p><small>⏰ QR expira em ~20 segundos</small></p>
-          <p><a href="/qr">🖼️ Ver apenas a imagem</a></p>
-        `
-        : !isAuthenticated
-        ? `<p><em>⏳ Aguardando geração do QR...</em></p>`
-        : `<p>🎉 Bot conectado! Pode fechar esta aba.</p>`
-    }
-    <hr style="margin:2rem 0">
-    <p><a href="/health">🔍 Status técnico</a></p>
+    <div class="container">
+      <h1>🤖 FECITAC Bot</h1>
+      <div class="status ${isAuthenticated ? 'connected' : 'waiting'}">${statusText}</div>
+      
+      ${
+        !isAuthenticated && latestQrPngB64
+          ? `
+            <div class="instructions">
+              <strong>📱 INSTRUÇÕES PARA CONECTAR:</strong><br>
+              1. Abra o WhatsApp no celular<br>
+              2. Toque nos 3 pontos > Dispositivos conectados<br>
+              3. Toque em "Conectar um dispositivo"<br>
+              4. Escaneie o QR abaixo
+            </div>
+            <div class="qr-container">
+              <img alt="QR Code WhatsApp" src="data:image/png;base64,${latestQrPngB64}">
+              <p><small>⏰ QR expira em ~20 segundos</small></p>
+            </div>
+            <a href="/qr" class="btn">🖼️ Ver QR em tela cheia</a>
+          `
+          : !isAuthenticated
+          ? `
+            <div class="instructions">
+              ⏳ Aguardando geração do QR...<br>
+              <small>Página atualiza automaticamente</small>
+            </div>
+          `
+          : `
+            <div class="instructions">
+              🎉 <strong>Bot conectado com sucesso!</strong><br>
+              O bot está funcionando 24h. Pode fechar esta aba.
+            </div>
+          `
+      }
+      
+      <hr style="margin:2rem 0">
+      <a href="/health" class="btn">🔍 Status técnico</a>
+    </div>
   `);
 });
 
 app.get("/qr", (_req, res) => {
-  if (!latestQrPngB64 || isAuthenticated)
-    return res
-      .status(404)
-      .send("QR não disponível. Bot pode já estar conectado.");
-  const img = Buffer.from(latestQrPngB64, "base64");
-  res.setHeader("Content-Type", "image/png");
-  res.setHeader("Cache-Control", "no-store");
-  res.send(img);
+  if (!latestQrPngB64 || isAuthenticated) {
+    return res.type("html").send(`
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>body{font-family:system-ui;text-align:center;margin:2rem;background:#f8f9fa}</style>
+      <h2>QR não disponível</h2>
+      <p>${isAuthenticated ? '✅ Bot já conectado!' : '⏳ QR ainda não foi gerado'}</p>
+      <a href="/">← Voltar</a>
+    `);
+  }
+  
+  // Página HTML com QR em tela cheia
+  res.type("html").send(`
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="20">
+    <style>
+      body{margin:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui}
+      img{max-width:90vw;max-height:70vh;border:2px solid white;border-radius:8px}
+      .info{color:white;text-align:center;margin:1rem}
+      a{color:#4CAF50;text-decoration:none;font-size:1.1em}
+    </style>
+    <div class="info">
+      <h2 style="color:white">📱 Escaneie com WhatsApp</h2>
+      <p>⏰ QR expira em ~20 segundos</p>
+    </div>
+    <img alt="QR Code WhatsApp" src="data:image/png;base64,${latestQrPngB64}">
+    <div class="info">
+      <a href="/">← Voltar para página principal</a>
+    </div>
+  `);
 });
 
 app.get("/health", (_req, res) => {

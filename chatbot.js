@@ -1,27 +1,32 @@
-// leitor de qr code
 const qrcode = require("qrcode-terminal");
-const {
-  Client,
-  LocalAuth,
-  Buttons,
-  List,
-  MessageMedia,
-} = require("whatsapp-web.js");
+const { Client, LocalAuth } = require("whatsapp-web.js");
 
-// Configurações otimizadas para Railway e local
-const puppeteerConfig = process.env.NODE_ENV === 'production' ? {
-  headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-} : {
-  headless: false,
-  args: ['--no-sandbox'],
+// Detectar ambiente
+const isProduction = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_STATIC_URL || process.env.NODE_ENV === "production");
+
+// Configuração do Puppeteer otimizada
+const puppeteerConfig = {
+  headless: isProduction ? true : false,
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-first-run",
+    "--no-zygote"
+  ]
 };
+
+// Adicionar caminho do executável apenas em produção
+if (isProduction) {
+  puppeteerConfig.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
+}
 
 const client = new Client({
   authStrategy: new LocalAuth({
-    dataPath: "./.wwebjs_auth",
+    dataPath: "./.wwebjs_auth"
   }),
-  puppeteer: puppeteerConfig,
+  puppeteer: puppeteerConfig
 });
 // ID do grupo específico (será obtido quando o bot conectar)
 let TARGET_GROUP_ID = null;
@@ -73,15 +78,19 @@ client.on("ready", async () => {
   }
 });
 
-console.log("🚀 Iniciando bot...");
+console.log("🚀 Iniciando FECITAC Bot...");
+console.log(`📍 Ambiente: ${isProduction ? 'Produção (Railway)' : 'Local'}`);
 
-// Inicializa com tratamento de erro
-client.initialize().catch((err) => {
-  console.error("❌ Erro ao inicializar cliente:", err);
-  process.exit(1);
-});
-
-console.log("⏳ Aguardando conexão com WhatsApp...");
+// Inicializar cliente
+(async () => {
+  try {
+    console.log("⏳ Conectando ao WhatsApp...");
+    await client.initialize();
+  } catch (error) {
+    console.error("❌ Erro fatal ao inicializar:", error);
+    process.exit(1);
+  }
+})();
 
 // Utilitário: delay
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -113,107 +122,151 @@ client.on("message", async (msg) => {
   console.log("- É do grupo alvo?", isFromTargetGroup);
   console.log("---");
 
-  // Menu - simplifiquei a detecção
-  if (
-    msg.body &&
-    /\b(menu|oi|olá|ola|dia|tarde|noite)\b/i.test(msg.body.toLowerCase()) &&
-    isFromTargetGroup
-  ) {
-    const chat = await msg.getChat();
-    await delay(1200);
-    await chat.sendStateTyping();
-    await delay(1200);
-    const contact = await msg.getContact();
-    const firstName = (contact.pushname || "colega").split(" ")[0];
+  // Trigger do menu - detecção simplificada
+  const triggerWords = ['menu', 'oi', 'olá', 'ola', 'dia', 'tarde', 'noite', 'bom dia', 'boa tarde', 'boa noite'];
+  const shouldShowMenu = msg.body && triggerWords.some(word => 
+    msg.body.toLowerCase().includes(word.toLowerCase())
+  );
+  
+  if (shouldShowMenu && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      const contact = await msg.getContact();
+      const firstName = (contact.pushname || "colega").split(" ")[0];
+      
+      await chat.sendStateTyping();
+      await delay(1000);
+      
+      const menuMessage = `👋 Olá, ${firstName}!
 
-    await chat.sendMessage(
-      "👋 Olá, " +
-        firstName +
-        "\n\n" +
-        "🎓 Sou o assistente da *2° FECITAC 2025*\n\n" +
-        "Como posso ajudá-lo? Digite uma das opções:\n\n" +
-        "1️⃣ - Inscrição no evento\n" +
-        "2️⃣ - Resumo\n" +
-        "3️⃣ - Banner\n" +
-        "4️⃣ - Programação Geral\n" +
-        "5️⃣ - Falar com atendente"
-    );
+🎓 Sou o assistente da *2° FECITAC 2025*
+
+Como posso ajudá-lo? Digite uma das opções:
+
+1️⃣ - Inscrição no evento
+2️⃣ - Resumo
+3️⃣ - Banner
+4️⃣ - Programação Geral
+5️⃣ - Falar com atendente`;
+      
+      await chat.sendMessage(menuMessage);
+      console.log(`✅ Menu enviado para ${firstName}`);
+    } catch (error) {
+      console.error("❌ Erro ao enviar menu:", error);
+    }
     return;
   }
 
-  // Opção 1
-  if (msg.body === "1" && isFromTargetGroup) {
-    const chat = await msg.getChat();
-    await delay(800);
-    await chat.sendStateTyping();
-    await delay(800);
-    await chat.sendMessage(
-      "📋 *INSCRIÇÃO NO EVENTO*\n\n" +
-        "📅 Data limite: 27 de setembro de 2025\n\n" +
-        "🔗 Link para inscrição:\n" +
-        "https://centraldeeventos.ifc.edu.br/snctsrs-605159/"
-    );
+  // Opção 1 - Inscrição
+  if (msg.body.trim() === "1" && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      await chat.sendStateTyping();
+      await delay(800);
+      
+      const inscricaoMessage = `📋 *INSCRIÇÃO NO EVENTO*
+
+📅 Data limite: 27 de setembro de 2025
+
+🔗 Link para inscrição:
+https://centraldeeventos.ifc.edu.br/snctsrs-605159/`;
+      
+      await chat.sendMessage(inscricaoMessage);
+      console.log("✅ Informação de inscrição enviada");
+    } catch (error) {
+      console.error("❌ Erro ao enviar informação de inscrição:", error);
+    }
     return;
   }
 
-  // Opção 2
-  if (msg.body === "2" && isFromTargetGroup) {
-    const chat = await msg.getChat();
-    await delay(800);
-    await chat.sendStateTyping();
-    await delay(800);
-    await chat.sendMessage(
-      "📄 *RESUMO*\n\n" +
-        "📅 Data limite: 21 de setembro de 2025\n\n" +
-        "⚠️ É necessário seguir o modelo do site\n\n" +
-        "🔗 Link do modelo:\n" +
-        "https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0"
-    );
+  // Opção 2 - Resumo
+  if (msg.body.trim() === "2" && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      await chat.sendStateTyping();
+      await delay(800);
+      
+      const resumoMessage = `📄 *RESUMO*
+
+📅 Data limite: 21 de setembro de 2025
+
+⚠️ É necessário seguir o modelo do site
+
+🔗 Link do modelo:
+https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0`;
+      
+      await chat.sendMessage(resumoMessage);
+      console.log("✅ Informação de resumo enviada");
+    } catch (error) {
+      console.error("❌ Erro ao enviar informação de resumo:", error);
+    }
     return;
   }
 
-  // Opção 3
-  if (msg.body === "3" && isFromTargetGroup) {
-    const chat = await msg.getChat();
-    await delay(800);
-    await chat.sendStateTyping();
-    await delay(800);
-    await chat.sendMessage(
-      "🎨 *BANNER*\n\n" +
-        "📅 Data limite: 17 de outubro de 2025\n\n" +
-        "⚠️ Seguir modelo disponível no site\n\n" +
-        "🔗 Link do modelo:\n" +
-        "https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true"
-    );
+  // Opção 3 - Banner
+  if (msg.body.trim() === "3" && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      await chat.sendStateTyping();
+      await delay(800);
+      
+      const bannerMessage = `🎨 *BANNER*
+
+📅 Data limite: 17 de outubro de 2025
+
+⚠️ Seguir modelo disponível no site
+
+🔗 Link do modelo:
+https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true`;
+      
+      await chat.sendMessage(bannerMessage);
+      console.log("✅ Informação de banner enviada");
+    } catch (error) {
+      console.error("❌ Erro ao enviar informação de banner:", error);
+    }
     return;
   }
 
-  // Opção 4
-  if (msg.body === "4" && isFromTargetGroup) {
-    const chat = await msg.getChat();
-    await delay(800);
-    await chat.sendStateTyping();
-    await delay(800);
-    await chat.sendMessage(
-      "📅 *PROGRAMAÇÃO GERAL*\n\n" +
-        "📋 Acesse a programação completa do evento:\n\n" +
-        "🔗 Link da programação:\n" +
-        "https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl"
-    );
+  // Opção 4 - Programação
+  if (msg.body.trim() === "4" && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      await chat.sendStateTyping();
+      await delay(800);
+      
+      const programacaoMessage = `📅 *PROGRAMAÇÃO GERAL*
+
+📋 Acesse a programação completa do evento:
+
+🔗 Link da programação:
+https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl`;
+      
+      await chat.sendMessage(programacaoMessage);
+      console.log("✅ Informação de programação enviada");
+    } catch (error) {
+      console.error("❌ Erro ao enviar informação de programação:", error);
+    }
     return;
   }
 
-  // Opção 5
-  if (msg.body === "5" && isFromTargetGroup) {
-    const chat = await msg.getChat();
-    await delay(800);
-    await chat.sendStateTyping();
-    await delay(800);
-    await chat.sendMessage(
-      "👥 *ATENDIMENTO HUMANO*\n\n" +
-        "📞 Aguarde: nossos atendentes irão responder o mais breve possível!\n\n" +
-        "⏰ Horário de atendimento: 8h às 17h"
-    );
+  // Opção 5 - Atendimento
+  if (msg.body.trim() === "5" && isFromTargetGroup) {
+    try {
+      const chat = await msg.getChat();
+      await chat.sendStateTyping();
+      await delay(800);
+      
+      const atendimentoMessage = `👥 *ATENDIMENTO HUMANO*
+
+📞 Aguarde: nossos atendentes irão responder o mais breve possível!
+
+⏰ Horário de atendimento: 8h às 17h`;
+      
+      await chat.sendMessage(atendimentoMessage);
+      console.log("✅ Solicitação de atendimento registrada");
+    } catch (error) {
+      console.error("❌ Erro ao processar solicitação de atendimento:", error);
+    }
     return;
   }
 });

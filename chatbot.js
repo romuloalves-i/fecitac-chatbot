@@ -4,6 +4,23 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 // Detectar ambiente
 const isProduction = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_STATIC_URL || process.env.NODE_ENV === "production");
 
+// Encontrar Chrome no Windows
+const findChrome = () => {
+  const possiblePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Users\\' + process.env.USERNAME + '\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'
+  ];
+  
+  const fs = require('fs');
+  for (const path of possiblePaths) {
+    if (fs.existsSync(path)) {
+      return path;
+    }
+  }
+  return null;
+};
+
 // Configuração do Puppeteer otimizada
 const puppeteerConfig = {
   headless: isProduction ? true : false,
@@ -17,9 +34,15 @@ const puppeteerConfig = {
   ]
 };
 
-// Adicionar caminho do executável apenas em produção
+// Definir caminho do executável
 if (isProduction) {
   puppeteerConfig.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
+} else {
+  const chromePath = findChrome();
+  if (chromePath) {
+    puppeteerConfig.executablePath = chromePath;
+    console.log(`🌐 Usando Chrome: ${chromePath}`);
+  }
 }
 
 const client = new Client({

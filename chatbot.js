@@ -34,9 +34,9 @@ function findChromeWin() {
 // -------------------- Config Puppeteer (robusta) --------------------
 const puppeteerConfig = {
   headless: isProduction,
-  args: [
+  args: isProduction ? [
     "--no-sandbox",
-    "--disable-setuid-sandbox",
+    "--disable-setuid-sandbox", 
     "--disable-dev-shm-usage",
     "--disable-gpu",
     "--no-first-run",
@@ -44,8 +44,10 @@ const puppeteerConfig = {
     "--disable-features=site-per-process",
     "--disable-extensions",
     "--disable-default-apps",
-    "--disable-web-security",
     "--single-process",
+  ] : [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
   ],
 };
 

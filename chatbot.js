@@ -134,21 +134,15 @@ client.on("group_join", async (notification) => {
   }
 });
 
-// Detectar TODAS as mensagens primeiro
+// Processar TODAS as mensagens (funciona melhor que "message")
 client.on("message_create", async (msg) => {
-  console.log("🔄 Qualquer mensagem (incluindo próprias):", msg.body);
-});
-
-// Processar mensagens (incluindo próprias para teste)
-client.on("message", async (msg) => {
-  console.log("📥 Mensagem recebida:", msg.body);
+  console.log("📨 Nova mensagem:", msg.body);
   console.log("👤 fromMe:", msg.fromMe);
   
-  // Para teste, vamos permitir processar mensagens próprias também
-  // if (msg.fromMe) {
-  //   console.log("⏭️ Ignorando mensagem própria");
-  //   return;
-  // }
+  // Para teste inicial, permite mensagens próprias
+  if (msg.fromMe) {
+    console.log("⚡ Processando mensagem própria para teste");
+  }
 
   // Debug detalhado
   console.log("📨 Mensagem detectada:");

@@ -1,35 +1,30 @@
+// chatbot.js
 const qrcode = require("qrcode-terminal");
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const fs = require("fs");
 
-// Detectar ambiente
-const isProduction = !!(
-  process.env.RAILWAY_ENVIRONMENT ||
-  process.env.RAILWAY_STATIC_URL ||
-  process.env.NODE_ENV === "production"
-);
+let TARGET_GROUP_ID = null;
 
-// Encontrar Chrome no Windows
-const findChrome = () => {
-  const possiblePaths = [
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Users\\" +
-      process.env.USERNAME +
-      "\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+// -------------------- Detecta ambiente --------------------
+const isProduction =
+  !!process.env.RAILWAY_ENVIRONMENT ||
+  !!process.env.RAILWAY_STATIC_URL ||
+  process.env.NODE_ENV === "production";
+
+// -------------------- Localiza Chrome no Windows (dev) --------------------
+function findChromeWin() {
+  const candidates = [
+    "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe",
+    "C:\\\\Program Files (x86)\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe",
+    `C:\\\\Users\\\\${process.env.USERNAME}\\\\AppData\\\\Local\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe`,
   ];
-
-  const fs = require("fs");
-  for (const path of possiblePaths) {
-    if (fs.existsSync(path)) {
-      return path;
-    }
-  }
+  for (const p of candidates) if (fs.existsSync(p)) return p;
   return null;
-};
+}
 
-// Configuração do Puppeteer otimizada
+// -------------------- Config Puppeteer (robusta) --------------------
 const puppeteerConfig = {
-  headless: isProduction ? true : false,
+  headless: isProduction,
   args: [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -37,56 +32,64 @@ const puppeteerConfig = {
     "--disable-gpu",
     "--no-first-run",
     "--no-zygote",
+    "--disable-features=site-per-process",
   ],
 };
 
-// Definir caminho do executável
 if (isProduction) {
   puppeteerConfig.executablePath =
     process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
 } else {
-  const chromePath = findChrome();
+  const chromePath = findChromeWin();
   if (chromePath) {
     puppeteerConfig.executablePath = chromePath;
-    console.log(`🌐 Usando Chrome: ${chromePath}`);
+    console.log("🌐 Usando Chrome (Windows):", chromePath);
+  } else {
+    console.warn(
+      "⚠️ Chrome não encontrado no Windows. O Puppeteer tentará o padrão."
+    );
   }
 }
 
+// -------------------- Instância do Client --------------------
 const client = new Client({
-  authStrategy: new LocalAuth({
-    dataPath: "./.wwebjs_auth",
-  }),
+  authStrategy: new LocalAuth({ dataPath: "./.wwebjs_auth" }),
   puppeteer: puppeteerConfig,
 });
-// ID do grupo específico (será obtido quando o bot conectar)
-let TARGET_GROUP_ID = null;
 
-// serviço de leitura do qr code
+// -------------------- Hardening --------------------
+process.on("unhandledRejection", (err) =>
+  console.error("UNHANDLED REJECTION:", err)
+);
+process.on("uncaughtException", (err) =>
+  console.error("UNCAUGHT EXCEPTION:", err)
+);
+
+// -------------------- Eventos --------------------
 client.on("qr", (qr) => {
-  console.log("📱 QR CODE GERADO!");
-  console.log("Escaneie este QR com seu WhatsApp:");
-  qrcode.generate(qr, { small: true }); // ASCII
-  console.log("\n🔗 Ou abra este link para ver o QR como imagem:");
+  console.log("📲 QR CODE GERADO — escaneie no WhatsApp:");
+  qrcode.generate(qr, { small: true });
   console.log(
+    "🔗 QR como imagem:",
     `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(
       qr
     )}`
   );
-  console.log("--------------------\n");
 });
 
-// autenticação
-client.on("authenticated", () => {
-  console.log("✅ Autenticado com sucesso!");
-});
+client.on("authenticated", () => console.log("🔐 Autenticado no WhatsApp."));
 
-// pronto
+client.on("auth_failure", (msg) =>
+  console.error("❌ Falha de autenticação:", msg)
+);
+
 client.on("ready", async () => {
-  console.log("🚀 Tudo certo! WhatsApp conectado.");
+  console.log("✅ Cliente pronto! Bot conectado.");
 
   try {
     const chats = await client.getChats();
     console.log(`💬 Total de conversas encontradas: ${chats.length}`);
+
     const targetGroup = chats.find(
       (chat) =>
         chat.isGroup &&
@@ -96,90 +99,42 @@ client.on("ready", async () => {
     if (targetGroup) {
       TARGET_GROUP_ID = targetGroup.id._serialized;
       console.log(
-        `Grupo encontrado: ${targetGroup.name} (ID: ${TARGET_GROUP_ID})`
+        `👥 Grupo encontrado: ${targetGroup.name} (ID: ${TARGET_GROUP_ID})`
       );
-      console.log("🤖 Bot pronto! Aguardando mensagens no grupo...");
     } else {
       console.log(
-        "Grupo não encontrado. Bot funcionará em TODAS as conversas."
+        "ℹ️ Grupo alvo não encontrado. O bot responderá em qualquer conversa."
       );
     }
 
-    console.log("📱 Para testar, envie 'oi' ou 'menu' em qualquer conversa");
-    console.log("🔍 Monitorando todas as mensagens...");
-
-    // Aguardar um tempo para estabilizar a conexão
-    setTimeout(() => {
-      console.log(
-        "🔄 Conexão estabilizada - bot pronto para receber mensagens!"
-      );
-    }, 3000);
+    console.log("📱 Envie 'oi' ou 'menu' para testar.");
   } catch (error) {
     console.error("Erro ao buscar grupo:", error);
   }
 });
 
-console.log("🚀 Iniciando FECITAC Bot...");
-console.log(`📍 Ambiente: ${isProduction ? "Produção (Railway)" : "Local"}`);
-
-// Inicializar cliente
-(async () => {
-  try {
-    console.log("⏳ Conectando ao WhatsApp...");
-    await client.initialize();
-  } catch (error) {
-    console.error("❌ Erro fatal ao inicializar:", error);
-    process.exit(1);
-  }
-})();
-
-// Utilitário: delay
-const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-
-// Log de entrada no grupo
-client.on("group_join", async (notification) => {
-  if (TARGET_GROUP_ID && notification.chatId === TARGET_GROUP_ID) {
-    console.log(`✅ Novo participante entrou no grupo!`);
-  }
+client.on("disconnected", (reason) => {
+  console.error("🔌 Desconectado:", reason);
+  setTimeout(() => safeInit(true), 5000); // tenta reconectar
 });
 
-// Processar mensagens (evitando repetições)
+// -------------------- Utilitário --------------------
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// -------------------- Respostas --------------------
 client.on("message_create", async (msg) => {
-  // Ignorar mensagens vazias e de status
-  if (!msg.body || msg.from === "status@broadcast") {
-    return;
-  }
-
-  // Ignorar completamente mensagens do próprio bot
-  if (msg.fromMe) {
-    console.log("⏭️ Ignorando mensagem própria");
-    return;
-  }
-
-  // Debug simplificado
-  console.log(`📨 ${msg.fromMe ? "Enviada" : "Recebida"}: "${msg.body}"`);
-  console.log(
-    `📍 De: ${msg.from} | Grupo: ${msg.from.endsWith("@g.us") ? "Sim" : "Não"}`
-  );
-
-  // Verificar se deve processar mensagem
-  const isFromTargetGroup = TARGET_GROUP_ID
-    ? msg.from === TARGET_GROUP_ID || !msg.from.endsWith("@g.us") // Grupo específico OU conversa direta
-    : true; // Se não encontrou grupo específico, aceita qualquer conversa
+  if (!msg.body || msg.from === "status@broadcast") return;
+  if (msg.fromMe) return;
 
   const isFromGroup = msg.from.endsWith("@g.us");
+  const isFromTargetGroup = TARGET_GROUP_ID
+    ? msg.from === TARGET_GROUP_ID || !isFromGroup
+    : true;
 
-  if (!isFromTargetGroup) {
-    console.log("❌ Mensagem ignorada (não é do grupo/conversa alvo)");
-    return;
-  }
+  if (!isFromTargetGroup) return;
 
-  console.log("✅ Processando mensagem...");
-
-  // Trigger do menu - detecção simplificada
-  const triggerWords = [
+  const triggers = [
     "menu",
-    "Oi",
     "oi",
     "olá",
     "ola",
@@ -190,210 +145,101 @@ client.on("message_create", async (msg) => {
     "boa tarde",
     "boa noite",
   ];
-  const shouldShowMenu =
-    msg.body &&
-    triggerWords.some((word) =>
-      msg.body.toLowerCase().includes(word.toLowerCase())
-    );
+  const shouldShowMenu = triggers.some((w) =>
+    msg.body.toLowerCase().includes(w)
+  );
 
-  if (shouldShowMenu && isFromTargetGroup) {
+  if (shouldShowMenu) {
     try {
       const chat = await msg.getChat();
       const contact = await msg.getContact();
       const firstName = (contact.pushname || "colega").split(" ")[0];
 
       await chat.sendStateTyping();
-      await delay(1000);
+      await delay(800);
 
       const menuMessage = `👋 Olá, ${firstName}!
 
-🎓 Sou o assistente virtual da FECITAC*
+🎓 Sou o assistente virtual da FECITAC
 
-Como posso ajudá-lo? Digite uma das opções:
-
-1️⃣ - Inscrição no evento
-2️⃣ - Resumo/modelo
-3️⃣ - Banner/modelo
-4️⃣ - Programação Geral
-5️⃣ - Falar com atendente`;
-
+Escolha uma opção:
+1️⃣ Inscrição no evento
+2️⃣ Resumo/modelo
+3️⃣ Banner/modelo
+4️⃣ Programação Geral
+5️⃣ Falar com atendente`;
       await chat.sendMessage(menuMessage);
-      console.log(`✅ Menu enviado para ${firstName}`);
-    } catch (error) {
-      console.error("❌ Erro ao enviar menu:", error);
+    } catch (e) {
+      console.error("Erro ao enviar menu:", e);
     }
     return;
   }
 
-  // Opção 1 - Inscrição
-  if (msg.body.trim() === "1" && isFromTargetGroup) {
-    try {
-      const chat = await msg.getChat();
+  // Opções
+  const opt = msg.body.trim();
+  try {
+    const chat = await msg.getChat();
+    if (opt === "1") {
       await chat.sendStateTyping();
       await delay(800);
+      await chat.sendMessage(`📋 *INSCRIÇÃO NO EVENTO*
 
-      const inscricaoMessage = `📋 *INSCRIÇÃO NO EVENTO*
-
-📅 Data: até 27 de setembro
-
-🔗 Link para inscrição:
-https://centraldeeventos.ifc.edu.br/snctsrs-605159/`;
-
-      await chat.sendMessage(inscricaoMessage);
-      console.log("✅ Informação de inscrição enviada");
-    } catch (error) {
-      console.error("❌ Erro ao enviar informação de inscrição:", error);
-    }
-    return;
-  }
-
-  // Opção 2 - Resumo
-  if (msg.body.trim() === "2" && isFromTargetGroup) {
-    try {
-      const chat = await msg.getChat();
+📅 Até 27 de setembro
+🔗 https://centraldeeventos.ifc.edu.br/snctsrs-605159/`);
+    } else if (opt === "2") {
       await chat.sendStateTyping();
       await delay(800);
+      await chat.sendMessage(`📄 *RESUMO* 
 
-      const resumoMessage = `📄 *RESUMO*
-
-📅 Prazo de envio: até 21 de setembro
-
-⚠️ É necessário seguir o modelo do site
-
-🔗 Link do modelo:
-https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0`;
-
-      await chat.sendMessage(resumoMessage);
-      console.log("✅ Informação de resumo enviada");
-    } catch (error) {
-      console.error("❌ Erro ao enviar informação de resumo:", error);
-    }
-    return;
-  }
-
-  // Opção 3 - Banner
-  if (msg.body.trim() === "3" && isFromTargetGroup) {
-    try {
-      const chat = await msg.getChat();
+📅 Prazo: até 21 de setembro
+🔗 Modelo: https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0`);
+    } else if (opt === "3") {
       await chat.sendStateTyping();
       await delay(800);
+      await chat.sendMessage(`🎨 *BANNER*
 
-      const bannerMessage = `🎨 *BANNER*
-
-📅 Prazo: até 17 de outubro de 2025
-
-⚠️ Seguir modelo disponível no site
-
-🔗 Link do modelo:
-https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true;
-
-🔗 Link para envio:
-https://drive.google.com/drive/folders/1ycinrgeL4_4GxucBk4gaS4z2ziypHFYw?usp=drive_link`;
-      await chat.sendMessage(bannerMessage);
-      console.log("✅ Informação de banner enviada");
-    } catch (error) {
-      console.error("❌ Erro ao enviar informação de banner:", error);
-    }
-    return;
-  }
-
-  // Opção 4 - Programação
-  if (msg.body.trim() === "4" && isFromTargetGroup) {
-    try {
-      const chat = await msg.getChat();
+📅 Prazo: até 17/10/2025
+🔗 Modelo: https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true
+🔗 Envio: https://drive.google.com/drive/folders/1ycinrgeL4_4GxucBk4gaS4z2ziypHFYw?usp=drive_link`);
+    } else if (opt === "4") {
       await chat.sendStateTyping();
       await delay(800);
+      await chat.sendMessage(`📅 *PROGRAMAÇÃO GERAL*
 
-      const programacaoMessage = `📅 *PROGRAMAÇÃO GERAL*
-
-📋 Acesse a programação completa do evento: EM BREVE SERÁ DIVULGADO
-
-🔗 Link da programação:
-https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl`;
-
-      await chat.sendMessage(programacaoMessage);
-      console.log("✅ Informação de programação enviada");
-    } catch (error) {
-      console.error("❌ Erro ao enviar informação de programação:", error);
-    }
-    return;
-  }
-
-  // Opção 5 - Atendimento
-  if (msg.body.trim() === "5" && isFromTargetGroup) {
-    try {
-      const chat = await msg.getChat();
+📋 Em breve será divulgado
+🔗 https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl`);
+    } else if (opt === "5") {
       await chat.sendStateTyping();
       await delay(800);
-
-      const atendimentoMessage = `👥 *ATENDIMENTO HUMANO*
-
-📞 Aguarde: nossos atendentes irão responder o mais breve possível!
-
-⏰ Horário de atendimento: 8h às 17h`;
-
-      await chat.sendMessage(atendimentoMessage);
-      console.log("✅ Solicitação de atendimento registrada");
-    } catch (error) {
-      console.error("❌ Erro ao processar solicitação de atendimento:", error);
+      await chat.sendMessage(`👥 *ATENDIMENTO HUMANO*
+⏰ 8h às 17h — Aguarde que responderemos!`);
     }
-    return;
+  } catch (e) {
+    console.error("Erro ao enviar resposta:", e);
   }
 });
 
-// Tratadores de erro melhorados
-client.on("auth_failure", (msg) => {
-  console.error("❌ Falha de autenticação:", msg);
-  process.exit(1);
-});
-
-client.on("disconnected", (reason) => {
-  console.error("🔌 Desconectado:", reason);
-  if (reason === "LOGOUT") {
-    console.log("📱 WhatsApp foi desconectado manualmente");
-    console.log("💡 Reinicie o bot para gerar novo QR code");
-    process.exit(0);
-  } else {
-    console.log("🔄 Tentando reconectar...");
-    setTimeout(() => {
-      client.initialize().catch(console.error);
-    }, 5000);
+// -------------------- Inicialização com retry ÚNICA --------------------
+async function safeInit(isRetry = false) {
+  try {
+    console.log(
+      isRetry ? "🔄 Re-inicializando..." : "🚀 Inicializando WhatsApp..."
+    );
+    await client.initialize();
+  } catch (err) {
+    console.error("Erro ao inicializar:", err);
+    setTimeout(() => safeInit(true), 5000);
   }
-});
+}
 
-// Tratamento global de erros
-process.on("unhandledRejection", (error, promise) => {
-  if (
-    error.message.includes("EBUSY") ||
-    error.message.includes("resource busy")
-  ) {
-    console.log("⚠️ Arquivo de sessão em uso - isso é normal durante logout");
-    return;
-  }
-  console.error("❌ Erro não tratado:", error);
-  console.error("Promise:", promise);
-});
+// Keep-alive opcional
+setInterval(() => console.log("⏱️ keep-alive"), 60 * 1000);
 
-process.on("uncaughtException", (error) => {
-  if (
-    error.message.includes("EBUSY") ||
-    error.message.includes("resource busy")
-  ) {
-    console.log("⚠️ Arquivo bloqueado - reiniciando...");
-    process.exit(0);
-  }
-  console.error("❌ Exceção não capturada:", error);
-  process.exit(1);
-});
-
-// Limpeza ao sair
-process.on("SIGINT", () => {
-  console.log("\n🛑 Parando bot...");
-  client
-    .destroy()
-    .then(() => {
-      console.log("✅ Bot finalizado");
-      process.exit(0);
-    })
-    .catch(() => process.exit(0));
-});
+// Boot
+console.log("🚀 Iniciando FECITAC Bot...");
+console.log(
+  `📍 Ambiente: ${
+    isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"
+  }`
+);
+safeInit();

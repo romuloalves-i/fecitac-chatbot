@@ -10,19 +10,31 @@ const {
 
 // Configurações
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  authStrategy: new LocalAuth({
+    dataPath: "./.wwebjs_auth", // manter sessão entre deploys
+  }),
   puppeteer: {
-    // Em produção troque para true
-    headless: process.env.HEADLESS === "false" ? false : true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: process.env.HEADLESS !== "false", // true por padrão na nuvem
+    executablePath:
+      process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+    ],
   },
 });
-
 // ID do grupo específico (será obtido quando o bot conectar)
 let TARGET_GROUP_ID = null;
 
 // serviço de leitura do qr code
 client.on("qr", (qr) => {
+  console.log("QR RECEBIDO:");
+  console.log("Abra o WhatsApp Web em seu celular e escaneie este QR:");
+  console.log("QR Code:", qr);
+  console.log("Ou acesse: https://wa.me/qr/" + qr);
   qrcode.generate(qr, { small: true });
 });
 

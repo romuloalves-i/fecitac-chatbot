@@ -52,5 +52,5 @@ ENV NODE_ENV=production
 # Railway atribui a porta dinamicamente via variável PORT
 # Não precisamos do EXPOSE fixo no Railway
 
-# comando de inicialização - chatbot completo
-CMD ["node", "chatbot.js"]
+# comando de inicialização - servidor simples primeiro
+CMD ["node", "simple-server.js"]

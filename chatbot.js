@@ -234,7 +234,7 @@ Como posso ajudá-lo? Digite uma das opções:
 
       const inscricaoMessage = `📋 *INSCRIÇÃO NO EVENTO*
 
-📅 Data limite: 27 de setembro de 2025
+📅 Data: até 27 de setembro
 
 🔗 Link para inscrição:
 https://centraldeeventos.ifc.edu.br/snctsrs-605159/`;
@@ -256,7 +256,7 @@ https://centraldeeventos.ifc.edu.br/snctsrs-605159/`;
 
       const resumoMessage = `📄 *RESUMO*
 
-📅 Prazo final para o envio do resumo : 21 de setembro de 2025
+📅 Prazo de envio: até 21 de setembro
 
 ⚠️ É necessário seguir o modelo do site
 
@@ -280,13 +280,15 @@ https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.
 
       const bannerMessage = `🎨 *BANNER*
 
-📅 Prazo final para envio do banner: 17 de outubro de 2025
+📅 Prazo: até 17 de outubro de 2025
 
 ⚠️ Seguir modelo disponível no site
 
 🔗 Link do modelo:
-https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true`;
+https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true;
 
+🔗 Link para envio:
+https://drive.google.com/drive/folders/1ycinrgeL4_4GxucBk4gaS4z2ziypHFYw?usp=drive_link`;
       await chat.sendMessage(bannerMessage);
       console.log("✅ Informação de banner enviada");
     } catch (error) {

@@ -68,28 +68,65 @@ if (isProduction) {
 
 // -------------------- Instância do Client --------------------
 const authPath = path.resolve("./.wwebjs_auth");
-const client = new Client({
+
+// Configuração robusta com timeouts e error handling
+const clientConfig = {
   authStrategy: new LocalAuth({ 
     dataPath: authPath,
     clientId: "fecitac-bot-session"
   }),
-  puppeteer: puppeteerConfig,
+  puppeteer: {
+    ...puppeteerConfig,
+    timeout: 60000, // Timeout de 60s para operações
+  },
   webVersionCache: {
     type: "remote",
     remotePath: "https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html",
   }
+};
+
+let client = null;
+let isInitializing = false;
+
+// -------------------- Hardening robusto --------------------
+process.on("unhandledRejection", (err) => {
+  console.error("UNHANDLED REJECTION:", err?.message || err);
+  // Não mata o processo, apenas loga
 });
 
-// -------------------- Hardening --------------------
-process.on("unhandledRejection", (err) =>
-  console.error("UNHANDLED REJECTION:", err)
-);
-process.on("uncaughtException", (err) =>
-  console.error("UNCAUGHT EXCEPTION:", err)
-);
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err?.message || err);
+  // Tenta recuperar o cliente se possível
+  if (client && !isInitializing) {
+    setTimeout(() => safeInit(true), 5000);
+  }
+});
 
-// -------------------- Eventos --------------------
-client.on("qr", async (qr) => {
+// Função para criar cliente com error handling
+function createClient() {
+  try {
+    if (client) {
+      console.log("🔄 Destruindo cliente anterior...");
+      client.removeAllListeners();
+      client = null;
+    }
+    
+    client = new Client(clientConfig);
+    setupClientEvents();
+    return client;
+  } catch (error) {
+    console.error("❌ Erro ao criar cliente:", error?.message || error);
+    return null;
+  }
+}
+
+// Configurar eventos do cliente com try/catch
+function setupClientEvents() {
+  if (!client) return;
+
+  // Evento QR com error handling robusto
+  client.on("qr", async (qr) => {
+    try {
   const currentTime = Date.now();
   lastQrTime = currentTime;
   isAuthenticated = false;
@@ -127,184 +164,250 @@ client.on("qr", async (qr) => {
     console.log(`🔗 Também disponível em: ${base}/qr`);
   }
   
-  console.log(`⏰ QR gerado em: ${new Date(currentTime).toLocaleString('pt-BR')}`);
-});
-
-client.on("authenticated", () => {
-  console.log("🔐 Autenticado no WhatsApp.");
-  isAuthenticated = true;
-  latestQrPngB64 = null; // limpa QR após autenticação
-});
-
-client.on("auth_failure", (msg) => {
-  console.error("❌ Falha de autenticação:", msg);
-  isAuthenticated = false;
-  // Remove dados de auth corrompidos
-  try {
-    if (fs.existsSync(authPath)) {
-      fs.rmSync(authPath, { recursive: true, force: true });
-      console.log("🗑️ Dados de autenticação removidos para restart limpo");
+      console.log(`⏰ QR gerado em: ${new Date(currentTime).toLocaleString('pt-BR')}`);
+    } catch (error) {
+      console.error("❌ Erro ao processar QR:", error?.message || error);
     }
-  } catch (e) {
-    console.error("Erro ao limpar auth:", e);
-  }
-});
+  });
 
-client.on("ready", async () => {
-  const readyTime = new Date().toLocaleString('pt-BR');
-  console.log(`✅ Cliente pronto! Bot conectado em ${readyTime}`);
-  isAuthenticated = true;
-
-  try {
-    const chats = await client.getChats();
-    console.log(`💬 Total de conversas encontradas: ${chats.length}`);
-
-    const targetGroup = chats.find(
-      (chat) =>
-        chat.isGroup &&
-        (chat.name?.includes("FECITAC") || chat.name?.includes("2025"))
-    );
-
-    if (targetGroup) {
-      TARGET_GROUP_ID = targetGroup.id._serialized;
-      console.log(
-        `👥 Grupo encontrado: ${targetGroup.name} (ID: ${TARGET_GROUP_ID})`
-      );
-    } else {
-      console.log(
-        "ℹ️ Grupo alvo não encontrado. O bot responderá em qualquer conversa."
-      );
+  // Evento authenticated com verificação de sessão
+  client.on("authenticated", () => {
+    try {
+      console.log("🔐 Autenticado no WhatsApp.");
+      isAuthenticated = true;
+      latestQrPngB64 = null; // limpa QR após autenticação
+    } catch (error) {
+      console.error("❌ Erro no evento authenticated:", error?.message || error);
     }
+  });
 
-    console.log("📱 Bot ativo - aguardando mensagens...");
-    
-    // Log de status a cada 5 minutos para monitoramento
-    setInterval(() => {
-      console.log(`🔄 Status: Bot online - ${new Date().toLocaleString('pt-BR')} - Auth: ${isAuthenticated}`);
-    }, 5 * 60 * 1000);
-    
-  } catch (error) {
-    console.error("❌ Erro ao inicializar bot:", error);
-  }
-});
+  // Evento auth_failure com cleanup robusto
+  client.on("auth_failure", (msg) => {
+    try {
+      console.error("❌ Falha de autenticação:", msg);
+      isAuthenticated = false;
+      
+      // Remove dados corrompidos com verificação
+      if (fs.existsSync(authPath)) {
+        fs.rmSync(authPath, { recursive: true, force: true });
+        console.log("🗑️ Dados de autenticação removidos para restart limpo");
+      }
+    } catch (e) {
+      console.error("Erro ao limpar auth:", e?.message || e);
+    }
+  });
 
-client.on("disconnected", (reason) => {
-  console.error("🔌 Desconectado:", reason);
-  setTimeout(() => safeInit(true), 5000); // tenta reconectar
-});
+  // Evento ready com error handling e timeout
+  client.on("ready", async () => {
+    try {
+      const readyTime = new Date().toLocaleString('pt-BR');
+      console.log(`✅ Cliente pronto! Bot conectado em ${readyTime}`);
+      isAuthenticated = true;
+
+      const chats = await Promise.race([
+        client.getChats(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao buscar chats')), 30000)
+        )
+      ]);
+      
+      console.log(`💬 Total de conversas encontradas: ${chats.length}`);
+
+      const targetGroup = chats.find(
+        (chat) =>
+          chat.isGroup &&
+          (chat.name?.includes("FECITAC") || chat.name?.includes("2025"))
+      );
+
+      if (targetGroup) {
+        TARGET_GROUP_ID = targetGroup.id._serialized;
+        console.log(`👥 Grupo encontrado: ${targetGroup.name}`);
+      } else {
+        console.log("ℹ️ Grupo alvo não encontrado. Bot responderá em qualquer conversa.");
+      }
+
+      console.log("📱 Bot ativo - aguardando mensagens...");
+      
+      // Log de status com intervalo seguro
+      setInterval(() => {
+        console.log(`🔄 Status: Bot online - ${new Date().toLocaleString('pt-BR')} - Auth: ${isAuthenticated}`);
+      }, 5 * 60 * 1000);
+      
+    } catch (error) {
+      console.error("❌ Erro ao inicializar bot:", error?.message || error);
+    }
+  });
+
+  // Evento disconnected com reconexão controlada
+  client.on("disconnected", (reason) => {
+    try {
+      console.error("🔌 Desconectado:", reason);
+      isAuthenticated = false;
+      
+      // Aguarda antes de tentar reconectar
+      setTimeout(() => {
+        if (!isInitializing) {
+          safeInit(true);
+        }
+      }, 5000);
+    } catch (error) {
+      console.error("❌ Erro no evento disconnected:", error?.message || error);
+    }
+  });
+}
+
+  // Eventos de mensagens com error handling robusto  
+  client.on("message_create", async (msg) => {
+    try {
+      if (!msg.body || msg.from === "status@broadcast" || msg.fromMe) return;
+
+      const isFromGroup = msg.from.endsWith("@g.us");
+      const isFromTargetGroup = TARGET_GROUP_ID
+        ? msg.from === TARGET_GROUP_ID || !isFromGroup
+        : true;
+
+      if (!isFromTargetGroup) return;
+
+      // Processamento de mensagens com timeout
+      await Promise.race([
+        processMessage(msg),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout ao processar mensagem')), 15000)
+        )
+      ]);
+      
+    } catch (error) {
+      console.error("❌ Erro ao processar mensagem:", error?.message || error);
+    }
+  });
+}
 
 // -------------------- Utilitário --------------------
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// -------------------- Respostas --------------------
-client.on("message_create", async (msg) => {
-  if (!msg.body || msg.from === "status@broadcast") return;
-  if (msg.fromMe) return;
-
-  const isFromGroup = msg.from.endsWith("@g.us");
-  const isFromTargetGroup = TARGET_GROUP_ID
-    ? msg.from === TARGET_GROUP_ID || !isFromGroup
-    : true;
-
-  if (!isFromTargetGroup) return;
-
+// -------------------- Processamento de Mensagens --------------------
+async function processMessage(msg) {
   const triggers = [
-    "menu",
-    "oi",
-    "olá",
-    "ola",
-    "dia",
-    "tarde",
-    "noite",
-    "bom dia",
-    "boa tarde",
-    "boa noite",
+    "menu", "oi", "olá", "ola", "dia", "tarde", "noite", 
+    "bom dia", "boa tarde", "boa noite"
   ];
+  
   const shouldShowMenu = triggers.some((w) =>
     msg.body.toLowerCase().includes(w)
   );
 
   if (shouldShowMenu) {
-    try {
-      const chat = await msg.getChat();
-      const contact = await msg.getContact();
-      const firstName = (contact.pushname || "colega").split(" ")[0];
+    const chat = await Promise.race([
+      msg.getChat(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao obter chat')), 5000)
+      )
+    ]);
+    
+    const contact = await Promise.race([
+      msg.getContact(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao obter contato')), 5000)
+      )
+    ]);
+    
+    const firstName = (contact.pushname || "colega").split(" ")[0];
+    await chat.sendStateTyping();
+    await delay(800);
 
-      await chat.sendStateTyping();
-      await delay(800);
-
-      const menuMessage = `👋 Olá, ${firstName}!
+    const menuMessage = `👋 Olá, ${firstName}!
 
 🎓 Sou o assistente virtual da FECITAC
 
 Escolha uma opção:
 1️⃣ Inscrição no evento
-2️⃣ Resumo/modelo
+2️⃣ Resumo/modelo  
 3️⃣ Banner/modelo
 4️⃣ Programação Geral
 5️⃣ Falar com atendente`;
-      await chat.sendMessage(menuMessage);
-    } catch (e) {
-      console.error("Erro ao enviar menu:", e);
-    }
+    
+    await chat.sendMessage(menuMessage);
     return;
   }
 
-  // Opções
+  // Processar opções numéricas
   const opt = msg.body.trim();
-  try {
-    const chat = await msg.getChat();
-    if (opt === "1") {
-      await chat.sendStateTyping();
-      await delay(800);
-      await chat.sendMessage(`📋 *INSCRIÇÃO NO EVENTO*
+  const responses = {
+    "1": `📋 *INSCRIÇÃO NO EVENTO*\n\n📅 Até 27 de setembro\n🔗 https://centraldeeventos.ifc.edu.br/snctsrs-605159/`,
+    "2": `📄 *RESUMO*\n\n📅 Prazo: até 21 de setembro\n🔗 Modelo: https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0`,
+    "3": `🎨 *BANNER*\n\n📅 Prazo: até 17/10/2025\n🔗 Modelo: https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true\n🔗 Envio: https://drive.google.com/drive/folders/1ycinrgeL4_4GxucBk4gaS4z2ziypHFYw?usp=drive_link`,
+    "4": `📅 *PROGRAMAÇÃO GERAL*\n\n📋 Em breve será divulgado\n🔗 https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl`,
+    "5": `👥 *ATENDIMENTO HUMANO*\n⏰ 8h às 17h — Aguarde que responderemos!`
+  };
 
-📅 Até 27 de setembro
-🔗 https://centraldeeventos.ifc.edu.br/snctsrs-605159/`);
-    } else if (opt === "2") {
-      await chat.sendStateTyping();
-      await delay(800);
-      await chat.sendMessage(`📄 *RESUMO* 
-
-📅 Prazo: até 21 de setembro
-🔗 Modelo: https://docs.google.com/document/d/15L93YkbHWvodpd6EpHOn5JiouzCKY_cz/edit?tab=t.0`);
-    } else if (opt === "3") {
-      await chat.sendStateTyping();
-      await delay(800);
-      await chat.sendMessage(`🎨 *BANNER*
-
-📅 Prazo: até 17/10/2025
-🔗 Modelo: https://docs.google.com/presentation/d/1fGZLR708imLeZxWrYVRte2bAh3QTsfLq/edit?usp=sharing&ouid=112398617982057251666&rtpof=true&sd=true
-🔗 Envio: https://drive.google.com/drive/folders/1ycinrgeL4_4GxucBk4gaS4z2ziypHFYw?usp=drive_link`);
-    } else if (opt === "4") {
-      await chat.sendStateTyping();
-      await delay(800);
-      await chat.sendMessage(`📅 *PROGRAMAÇÃO GERAL*
-
-📋 Em breve será divulgado
-🔗 https://drive.google.com/drive/u/1/folders/1cw7Ru5Q_On1S19tMnhWF5uwk19qlhQzl`);
-    } else if (opt === "5") {
-      await chat.sendStateTyping();
-      await delay(800);
-      await chat.sendMessage(`👥 *ATENDIMENTO HUMANO*
-⏰ 8h às 17h — Aguarde que responderemos!`);
-    }
-  } catch (e) {
-    console.error("Erro ao enviar resposta:", e);
+  if (responses[opt]) {
+    const chat = await Promise.race([
+      msg.getChat(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout ao obter chat')), 5000)
+      )
+    ]);
+    
+    await chat.sendStateTyping();
+    await delay(800);
+    await chat.sendMessage(responses[opt]);
   }
-});
+}
 
-// -------------------- Inicialização com retry ÚNICA --------------------
+// -------------------- Inicialização robusta --------------------
 async function safeInit(isRetry = false) {
-  try {
-    console.log(
-      isRetry ? "🔄 Re-inicializando..." : "🚀 Inicializando WhatsApp..."
-    );
-    await client.initialize();
-  } catch (err) {
-    console.error("Erro ao inicializar:", err);
-    setTimeout(() => safeInit(true), 5000);
+  if (isInitializing) {
+    console.log("⏳ Inicialização já em andamento...");
+    return;
   }
+
+  isInitializing = true;
+  
+  try {
+    console.log(isRetry ? "🔄 Re-inicializando..." : "🚀 Inicializando WhatsApp...");
+    
+    // Criar novo cliente se necessário
+    if (!client || isRetry) {
+      client = createClient();
+      if (!client) {
+        throw new Error("Falha ao criar cliente");
+      }
+    }
+
+    // Inicializar com timeout
+    await Promise.race([
+      client.initialize(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout na inicialização')), 90000)
+      )
+    ]);
+    
+    console.log("✅ Inicialização concluída com sucesso");
+    
+  } catch (err) {
+    console.error("❌ Erro ao inicializar:", err?.message || err);
+    
+    // Cleanup em caso de erro
+    if (client) {
+      try {
+        client.removeAllListeners();
+      } catch (e) {
+        // Ignorar erros de cleanup
+      }
+      client = null;
+    }
+    
+    // Retry com backoff exponencial
+    const retryDelay = isRetry ? 10000 : 5000;
+    console.log(`🔄 Tentando novamente em ${retryDelay/1000}s...`);
+    setTimeout(() => {
+      isInitializing = false;
+      safeInit(true);
+    }, retryDelay);
+    return;
+  }
+  
+  isInitializing = false;
 }
 
 // -------------------- Servidor HTTP para QR --------------------
@@ -434,20 +537,17 @@ app.listen(PORT, () => {
   console.log(`🌐 HTTP pronto em ${base}  (QR em ${base}/qr)`);
 });
 
-// Boot
+// -------------------- Inicialização do Sistema --------------------
 console.log("🚀 Iniciando FECITAC Bot...");
-console.log(
-  `📍 Ambiente: ${
-    isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"
-  }`
-);
+console.log(`📍 Ambiente: ${isProduction ? "Produção (Railway/Docker)" : "Local (Windows)"}`);
 console.log(`💾 Dados de autenticação: ${authPath}`);
 
-// Verificar se já tem sessão
+// Verificar se já tem sessão salva
 if (fs.existsSync(authPath)) {
   console.log("🔑 Dados de sessão encontrados - tentando conectar...");
 } else {
   console.log("🆕 Nova sessão - QR será gerado");
 }
 
+// Inicializar cliente
 safeInit();

@@ -53,9 +53,15 @@ client.on("authenticated", () => {
 // pronto
 client.on("ready", async () => {
   console.log("🚀 Tudo certo! WhatsApp conectado.");
+  
+  // Verificar se o cliente está realmente funcional
+  const info = client.info;
+  console.log(`📱 Conectado como: ${info.pushname} (${info.wid.user})`);
+  console.log(`📊 Plataforma: ${info.platform}`);
 
   try {
     const chats = await client.getChats();
+    console.log(`💬 Total de conversas encontradas: ${chats.length}`);
     const targetGroup = chats.find(
       (chat) =>
         chat.isGroup &&
@@ -76,6 +82,17 @@ client.on("ready", async () => {
     
     console.log("📱 Para testar, envie 'oi' ou 'menu' em qualquer conversa");
     console.log("🔍 Monitorando todas as mensagens...");
+    
+    // Teste de funcionalidade - enviar mensagem para si mesmo
+    setTimeout(async () => {
+      try {
+        const myNumber = client.info.wid.user + '@c.us';
+        await client.sendMessage(myNumber, '🤖 Bot FECITAC está online e funcionando!');
+        console.log("✅ Teste de envio realizado - verifique seu WhatsApp");
+      } catch (error) {
+        console.error("❌ Erro no teste de envio:", error);
+      }
+    }, 3000);
   } catch (error) {
     console.error("Erro ao buscar grupo:", error);
   }

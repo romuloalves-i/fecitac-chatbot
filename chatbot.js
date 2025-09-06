@@ -134,23 +134,21 @@ client.on("group_join", async (notification) => {
   }
 });
 
-// Processar TODAS as mensagens (funciona melhor que "message")
+// Processar mensagens (evitando repetições)
 client.on("message_create", async (msg) => {
-  console.log("📨 Nova mensagem:", msg.body);
-  console.log("👤 fromMe:", msg.fromMe);
-  
-  // Para teste inicial, permite mensagens próprias
-  if (msg.fromMe) {
-    console.log("⚡ Processando mensagem própria para teste");
+  // Ignorar mensagens vazias e de status
+  if (!msg.body || msg.from === 'status@broadcast') {
+    return;
   }
-
-  // Debug detalhado
-  console.log("📨 Mensagem detectada:");
-  console.log("- De:", msg.from);
-  console.log("- Texto:", msg.body);
-  console.log("- É grupo?", msg.from.endsWith("@g.us"));
-  console.log("- TARGET_GROUP_ID:", TARGET_GROUP_ID);
-  console.log("- fromMe?", msg.fromMe);
+  
+  // Para evitar loop infinito, ignorar mensagens do próprio bot em produção
+  if (msg.fromMe && !msg.body.toLowerCase().includes('oi') && !msg.body.toLowerCase().includes('menu')) {
+    return;
+  }
+  
+  // Debug simplificado
+  console.log(`📨 ${msg.fromMe ? 'Enviada' : 'Recebida'}: "${msg.body}"`);
+  console.log(`📍 De: ${msg.from} | Grupo: ${msg.from.endsWith("@g.us") ? 'Sim' : 'Não'}`);
 
   // Verificar se deve processar mensagem
   const isFromTargetGroup = TARGET_GROUP_ID
@@ -159,10 +157,12 @@ client.on("message_create", async (msg) => {
     
   const isFromGroup = msg.from.endsWith("@g.us");
 
-  console.log("- É do grupo alvo?", isFromTargetGroup);
-  console.log("- É de grupo?", isFromGroup);
-  console.log("- Deve processar?", isFromTargetGroup);
-  console.log("---");
+  if (!isFromTargetGroup) {
+    console.log("❌ Mensagem ignorada (não é do grupo/conversa alvo)");
+    return;
+  }
+  
+  console.log("✅ Processando mensagem...");
 
   // Trigger do menu - detecção simplificada
   const triggerWords = ['menu', 'oi', 'olá', 'ola', 'dia', 'tarde', 'noite', 'bom dia', 'boa tarde', 'boa noite'];

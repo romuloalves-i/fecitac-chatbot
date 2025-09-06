@@ -15,8 +15,7 @@ const client = new Client({
   }),
   puppeteer: {
     headless: process.env.HEADLESS !== "false", // true por padrão na nuvem
-    executablePath:
-      process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // deixa o Puppeteer encontrar automaticamente
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",

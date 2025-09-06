@@ -152,9 +152,9 @@ client.on("message_create", async (msg) => {
   console.log("- TARGET_GROUP_ID:", TARGET_GROUP_ID);
   console.log("- fromMe?", msg.fromMe);
 
-  // Verificar se deve processar mensagem (grupo específico, qualquer grupo, ou conversa direta)
+  // Verificar se deve processar mensagem
   const isFromTargetGroup = TARGET_GROUP_ID
-    ? msg.from === TARGET_GROUP_ID  // Grupo específico encontrado
+    ? (msg.from === TARGET_GROUP_ID || !msg.from.endsWith("@g.us"))  // Grupo específico OU conversa direta
     : true;  // Se não encontrou grupo específico, aceita qualquer conversa
     
   const isFromGroup = msg.from.endsWith("@g.us");

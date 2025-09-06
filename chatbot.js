@@ -254,7 +254,6 @@ function setupClientEvents() {
       console.error("❌ Erro no evento disconnected:", error?.message || error);
     }
   });
-}
 
   // Eventos de mensagens com error handling robusto  
   client.on("message_create", async (msg) => {
